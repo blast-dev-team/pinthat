@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QA 도구 테스트 — 인플루언서 프로필</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #4A90D9; min-height: 100vh; }
+
+    /* Header */
+    .header { background: #fff; padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+    .header-logo { font-size: 18px; font-weight: 700; color: #1e293b; }
+    .header-nav { display: flex; gap: 20px; }
+    .header-nav a { text-decoration: none; color: #64748b; font-size: 14px; font-weight: 500; }
+    .header-nav a:hover { color: #2563eb; }
+    .header-nav a.active { color: #2563eb; border-bottom: 2px solid #2563eb; padding-bottom: 2px; }
+
+    /* Hero Section */
+    .hero { padding: 60px 20px 40px; text-align: center; }
+    .hero h1 { color: #fff; font-size: 32px; font-weight: 700; margin-bottom: 12px; }
+    .hero p { color: rgba(255,255,255,0.85); font-size: 16px; max-width: 500px; margin: 0 auto; }
+
+    /* Profile Card */
+    .profile-section { display: flex; justify-content: center; padding: 0 20px 60px; }
+    .profile-card { background: rgba(255,255,255,0.25); backdrop-filter: blur(20px); border-radius: 24px; padding: 40px; width: 100%; max-width: 520px; position: relative; }
+
+    /* Floating Badges */
+    .badge { background: #fff; border-radius: 14px; padding: 12px 18px; display: inline-flex; align-items: center; gap: 10px; box-shadow: 0 4px 16px rgba(0,0,0,0.1); position: absolute; }
+    .badge-icon { width: 40px; height: 40px; background: #FFF8E1; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 22px; }
+    .badge-text h4 { font-size: 14px; font-weight: 600; color: #1e293b; margin-bottom: 2px; }
+    .badge-text p { font-size: 12px; color: #64748b; }
+
+    .badge-icc { top: 20px; left: -20px; }
+    .badge-performance { top: 10px; right: -20px; }
+    .badge-blog { top: 55%; left: -30px; transform: translateY(-50%); }
+    .badge-youtube { top: 55%; right: -30px; transform: translateY(-50%); }
+
+    /* Avatar */
+    .avatar-area { text-align: center; margin: 40px 0 30px; }
+    .avatar { width: 120px; height: 120px; background: linear-gradient(135deg, #FFE0B2, #FFCC80); border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 64px; box-shadow: 0 8px 24px rgba(0,0,0,0.12); }
+
+    /* Name Card */
+    .name-card { background: #fff; border-radius: 16px; padding: 20px 24px; text-align: center; box-shadow: 0 4px 16px rgba(0,0,0,0.08); }
+    .name-card h2 { font-size: 20px; font-weight: 700; color: #1e293b; margin-bottom: 4px; }
+    .name-card p { font-size: 14px; color: #64748b; }
+
+    /* Stats Section */
+    .stats-section { padding: 40px 20px; max-width: 800px; margin: 0 auto; }
+    .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+    .stat-card { background: #fff; border-radius: 16px; padding: 24px; text-align: center; box-shadow: 0 4px 16px rgba(0,0,0,0.08); }
+    .stat-card .stat-value { font-size: 28px; font-weight: 700; color: #2563eb; }
+    .stat-card .stat-label { font-size: 13px; color: #64748b; margin-top: 4px; }
+
+    /* Projects Section */
+    .projects-section { padding: 20px 20px 60px; max-width: 800px; margin: 0 auto; }
+    .projects-section h2 { color: #fff; font-size: 22px; font-weight: 700; margin-bottom: 20px; }
+    .project-list { display: flex; flex-direction: column; gap: 12px; }
+    .project-item { background: #fff; border-radius: 14px; padding: 20px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 4px 12px rgba(0,0,0,0.06); cursor: pointer; transition: transform 0.15s; }
+    .project-item:hover { transform: translateY(-2px); }
+    .project-info h3 { font-size: 15px; font-weight: 600; color: #1e293b; }
+    .project-info p { font-size: 13px; color: #64748b; margin-top: 2px; }
+    .project-status { padding: 6px 14px; border-radius: 8px; font-size: 12px; font-weight: 600; }
+    .status-active { background: #ECFDF5; color: #059669; }
+    .status-complete { background: #EFF6FF; color: #2563eb; }
+    .status-pending { background: #FFF7ED; color: #EA580C; }
+
+    /* Modal */
+    .modal-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 9999; align-items: center; justify-content: center; }
+    .modal-overlay.show { display: flex; }
+    .modal { background: #fff; border-radius: 20px; width: 90%; max-width: 480px; box-shadow: 0 16px 48px rgba(0,0,0,0.2); }
+    .modal-header { padding: 24px 24px 0; }
+    .modal-header h2 { font-size: 18px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+    .modal-body { padding: 20px 24px; }
+    .form-group { margin-bottom: 16px; }
+    .form-group label { display: block; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 6px; }
+    .form-group label .required { color: #ef4444; }
+    .form-group input, .form-group textarea { width: 100%; padding: 12px; border: 1px solid #e5e7eb; border-radius: 10px; font-size: 14px; font-family: inherit; outline: none; }
+    .form-group input:focus, .form-group textarea:focus { border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37,99,235,0.1); }
+    .form-group textarea { min-height: 80px; resize: vertical; }
+    .modal-footer { padding: 16px 24px 24px; display: flex; gap: 10px; justify-content: flex-end; }
+    .btn { padding: 10px 24px; border-radius: 10px; font-size: 14px; font-weight: 600; border: none; cursor: pointer; }
+    .btn-cancel { background: #f3f4f6; color: #374151; }
+    .btn-primary { background: #1e3a5f; color: #fff; }
+    .btn-primary:hover { background: #15304f; }
+
+    /* Footer */
+    .footer { background: rgba(0,0,0,0.15); padding: 24px; text-align: center; color: rgba(255,255,255,0.6); font-size: 13px; }
+
+    /* Alert Banner (intentional bug for QA testing) */
+    .alert-banner { background: #FEF2F2; border: 1px solid #FECACA; border-radius: 10px; padding: 12px 16px; margin: 0 auto 20px; max-width: 800px; display: flex; align-items: center; gap: 8px; font-size: 13px; color: #991B1B; }
+
+    @media (max-width: 600px) {
+      .stats-grid { grid-template-columns: 1fr; }
+      .badge { position: static; margin: 8px; }
+      .profile-card { padding: 20px; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <header class="header">
+    <div class="header-logo">BLAST CRM</div>
+    <nav class="header-nav">
+      <a href="#" class="active">인플루언서</a>
+      <a href="demo-projects.html">프로젝트</a>
+      <a href="#">캘린더</a>
+      <a href="#">리포트</a>
+    </nav>
+  </header>
+
+  <!-- Alert Banner (intentional: 테스트용 에러 배너) -->
+  <div style="padding: 20px 20px 0;">
+    <div class="alert-banner">
+      ⚠️ 데이터 동기화에 실패했습니다. 일부 정보가 최신이 아닐 수 있습니다.
+    </div>
+  </div>
+
+  <!-- Hero -->
+  <section class="hero">
+    <h1>인플루언서 프로필</h1>
+    <p>크리에이터의 성과와 활동 현황을 한눈에 확인하세요</p>
+  </section>
+
+  <!-- Profile Card -->
+  <section class="profile-section">
+    <div class="profile-card">
+      <div class="badge badge-icc">
+        <div class="badge-icon">🏆</div>
+        <div class="badge-text">
+          <h4>ICC</h4>
+          <p>공식멤버</p>
+        </div>
+      </div>
+      <div class="badge badge-performance">
+        <div class="badge-icon">📈</div>
+        <div class="badge-text">
+          <h4>성과</h4>
+          <p>평균 ROI 310% 달성</p>
+        </div>
+      </div>
+      <div class="badge badge-blog">
+        <div class="badge-icon">📝</div>
+        <div class="badge-text">
+          <h4>블로그</h4>
+          <p>토탈 500만+</p>
+        </div>
+      </div>
+      <div class="badge badge-youtube">
+        <div class="badge-icon">🎬</div>
+        <div class="badge-text">
+          <h4>유튜브</h4>
+          <p>조회수 360만+</p>
+        </div>
+      </div>
+
+      <div class="avatar-area">
+        <div class="avatar">👩</div>
+      </div>
+
+      <div class="name-card">
+        <h2>OOO (다람쥐의정원)</h2>
+        <p>XX컴퍼니 대표 · 크리에이터</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Stats -->
+  <section class="stats-section">
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-value">47</div>
+        <div class="stat-label">진행 프로젝트</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value">310%</div>
+        <div class="stat-label">평균 ROI</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value">4.9</div>
+        <div class="stat-label">고객 만족도</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Projects -->
+  <section class="projects-section">
+    <h2>최근 프로젝트</h2>
+    <div class="project-list">
+      <div class="project-item" onclick="openModal()">
+        <div class="project-info">
+          <h3>3월 월구독 플랜</h3>
+          <p>2026.03.01 ~ 2026.03.31 · 500,000원</p>
+        </div>
+        <span class="project-status status-active">진행중</span>
+      </div>
+      <div class="project-item">
+        <div class="project-info">
+          <h3>뷰티 브랜드 콜라보</h3>
+          <p>2026.02.15 ~ 2026.02.28 · 1,200,000원</p>
+        </div>
+        <span class="project-status status-complete">완료</span>
+      </div>
+      <div class="project-item">
+        <div class="project-info">
+          <h3>펫푸드 리뷰 캠페인</h3>
+          <p>2026.04.01 ~ 2026.04.30 · 800,000원</p>
+        </div>
+        <span class="project-status status-pending">대기</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- Modal (프로젝트 상세/추가) -->
+  <div class="modal-overlay" id="modalOverlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h2>📁 새 프로젝트 추가</h2>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>계약 상품 <span class="required">*</span></label>
+          <input type="text" value="3월 월구독 플랜">
+        </div>
+        <div class="form-group">
+          <label>상품 설명</label>
+          <textarea placeholder="상품에 대한 설명이나 세부 내용을 입력하세요..."></textarea>
+        </div>
+        <div class="form-group">
+          <label>계약 금액</label>
+          <input type="text" value="500,000">
+        </div>
+        <div class="form-group">
+          <label>시작일</label>
+          <input type="date" value="2026-03-01">
+        </div>
+        <div class="form-group">
+          <label>종료일</label>
+          <input type="date" value="2026-03-31">
+        </div>
+        <div class="form-group">
+          <label>메모</label>
+          <textarea placeholder="메모를 입력하세요..."></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-cancel" onclick="closeModal()">취소</button>
+        <button class="btn btn-primary" onclick="submitProject()">추가</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer class="footer">
+    © 2026 BLAST CRM — QA 도구 테스트 페이지
+  </footer>
+
+  <script>
+    // Modal
+    function openModal() {
+      document.getElementById('modalOverlay').classList.add('show');
+    }
+    function closeModal() {
+      document.getElementById('modalOverlay').classList.remove('show');
+    }
+    // Close on backdrop click
+    document.getElementById('modalOverlay').addEventListener('click', function(e) {
+      if (e.target === this) closeModal();
+    });
+
+    // Intentional: alert 테스트 (네이티브 팝업)
+    function submitProject() {
+      alert('프로젝트 생성에 실패했습니다.');
+    }
+  </script>
+
+  <!-- QA Feedback Tool -->
+  <script src="qa-feedback.js"></script>
+
+</body>
+</html>
