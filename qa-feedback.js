@@ -277,6 +277,9 @@
           <button class="qa-feedback-btn" id="qaExport">
             <span class="qa-fb-icon">📋</span> 마크다운 출력 <span class="qa-shortcut-hint" data-action="export" style="font-size:10px;color:#64748b;margin-left:auto;">E</span>
           </button>
+          <button class="qa-feedback-btn" id="qaMarkdownImport">
+            <span class="qa-fb-icon">📋</span> 마크다운 가져오기
+          </button>
           <button class="qa-feedback-btn" id="qaReset" disabled>
             <span class="qa-fb-icon">🗑️</span> 초기화 <span class="qa-shortcut-hint" data-action="reset" style="font-size:10px;color:#64748b;margin-left:auto;">R</span>
           </button>
@@ -286,9 +289,6 @@
           </button>
           <button class="qa-feedback-btn" id="qaSessionLoad">
             <span class="qa-fb-icon">📂</span> 세션 불러오기
-          </button>
-          <button class="qa-feedback-btn" id="qaMarkdownImport">
-            <span class="qa-fb-icon">📋</span> 마크다운 가져오기
           </button>
           <div class="qa-feedback-sep"></div>
           <button class="qa-feedback-btn" id="qaSettingsToggle">
