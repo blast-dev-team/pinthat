@@ -1,7 +1,7 @@
 # PRD: QA TOOL v2 — 파이프라인 고도화
 
-> 버전: v2.0 | 최종 갱신: 2026-03-07
-> 상태: ✅ 확정
+> 버전: v2.1 | 최종 갱신: 2026-03-07
+> 상태: ✅ 확정 (Phase 2 추가)
 
 ## 1. 개요
 
@@ -120,15 +120,78 @@ qa-alerts (키)
 
 ## 7. 로드맵
 
-| Phase | 내용 | 기능 |
-|-------|------|------|
-| Phase 1 (MVP) | 핵심 파이프라인 | F-1 영속 저장 + F-2 멀티페이지 세션 + F-3 재검수 모드 |
-| Phase 2 | 자동화 확장 | F-4 alert 캡처 + F-5 DEV-REQUEST 자동생성 + F-6 검수 리포트 |
-| Phase 3 (미래) | 공유/증빙 | 스크린샷 캡처, PDF 리포트, 팀 공유 (Firebase 검토 시점) |
+| Phase | 내용 | 기능 | 상태 |
+|-------|------|------|------|
+| Phase 1 (MVP) | 핵심 파이프라인 (script 태그 버전) | F-1~F-3 + DEV-004~006 | ✅ 완료 |
+| Phase 2 | Chrome Extension 전환 + 자동화 | Extension 리빌드 + F-4 alert 캡처 + F-5 DEV-REQUEST 자동생성 + F-6 검수 리포트 | 🟡 진행 예정 |
+| Phase 3 (미래) | 팀용 전환 | Auth + DB + 팀 공유 + 유료화 (Firebase/Supabase 검토 시점) | 미정 |
+
+### Phase 1 → Phase 2 분기 전략
+- **Phase 1 (script 태그 버전)**: GitHub에 완성 상태로 유지 (https://github.com/Leeyeonjin2001/qa-tool). 추가 개발 없음.
+- **Phase 2 (Chrome Extension)**: 별도 레포로 신규 개발. Phase 1의 기획/로직을 계승하되 Extension 구조로 리빌드. F-4~F-6 기능을 Extension에서 직접 구현.
+- **전환 이유**: 모달 z-index 문제 근본 해결, script 태그 삽입 불필요, 모든 사이트에서 즉시 사용 가능, 파일 시스템 접근으로 DEV-REQUEST 자동 연동 가능
 
 ---
 
-## 8. 사용자 시나리오 (Phase 1 완료 후)
+## 8. Phase 2 상세 — Chrome Extension + 자동화
+
+### 8-1. Chrome Extension 구조
+
+```
+qa-tool-extension/
+├── manifest.json          — Extension 설정 (Manifest V3)
+├── content-script.js      — 대상 페이지에 주입되는 QA 도구 코드
+├── popup.html / popup.js  — Extension 팝업 (ON/OFF, 세션 목록)
+├── background.js          — 서비스 워커 (파일 시스템 연동 등)
+├── styles.css             — QA 도구 스타일 (Shadow DOM 또는 네임스페이스)
+└── icons/                 — Extension 아이콘
+```
+
+### 8-2. Extension 전환 시 해결되는 문제
+| 기존 문제 | Extension에서의 해결 |
+|-----------|---------------------|
+| 모달 위 핀이 가려짐 (z-index) | Shadow DOM 또는 별도 레이어로 분리 |
+| script 태그 수동 삽입 필요 | Extension 설치만으로 모든 사이트에서 동작 |
+| alert/confirm 캡처 불안정 | content script에서 페이지 로드 전 override 주입 |
+| DEV-REQUEST 수동 복사 | background script → 파일 시스템 or 클립보드 자동 포맷 |
+
+### 8-3. F-4: alert/confirm 캡처
+- content script에서 `window.alert`, `window.confirm`을 페이지 로드 전 override
+- 호출 시 원본 메시지를 localStorage `qa-alerts`에 자동 기록
+- QA 패널에 "🔔 캡처된 알림" 섹션 추가, 목록으로 표시
+- 각 알림에 피드백 남기기 가능 (일반 피드백과 동일 형태)
+
+### 8-4. F-5: DEV-REQUEST 자동 생성
+- 마크다운 출력 시 "DEV-REQUEST 형식으로 출력" 옵션 추가
+- DEV-REQUEST 템플릿에 자동 매핑:
+  - 피드백 → 상세 스펙의 항목으로 변환
+  - selector 정보 → 수정 위치로 변환
+  - 피드백 타입 (UI/기능/텍스트) → 요청 카테고리로 변환
+- 클립보드 복사 시 바로 클로드 코드에 붙여넣을 수 있는 형태
+
+### 8-5. F-6: 검수 리포트 자동화
+- 재검수 완료 시 생성되는 리포트를 확장:
+  - 검수 통계 요약 (수정됨/미수정/요소 못 찾음 비율)
+  - 페이지별 그룹핑 (멀티페이지 세션일 경우)
+  - 이전 검수 이력 포함 (몇 차 재검수인지)
+- 마크다운 + DEV-REQUEST 형식 동시 출력
+
+---
+
+## 9. 사용자 시나리오 (Phase 2 완료 후)
+
+```
+1. Chrome Extension 설치 → 아무 사이트에서 바로 사용 가능
+2. 페이지 방문 → Extension 아이콘 클릭 → QA 모드 ON
+3. 요소 3개에 피드백 + alert 발생 시 자동 캡처
+4. "DEV-REQUEST 출력" → 클로드 코드에 바로 붙여넣기
+5. 수정 완료 후 → "마크다운 가져오기" or "세션 재검수"
+6. 재검수 리포트 → 검수 통계 + 미수정 항목 자동 정리
+```
+
+---
+
+## 10. 사용자 시나리오 (Phase 1 완료 후)
 
 ```
 1. 페이지A 열기 → Alt+Q → QA 모드 ON

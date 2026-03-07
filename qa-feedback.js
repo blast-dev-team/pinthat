@@ -477,7 +477,7 @@
     STATE.dragStart = null;
     areaBox.style.display = 'none';
     if (w > 10 && h > 10) {
-      showFeedbackPopup(null, false, null, { x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(h) });
+      showFeedbackPopup(null, false, null, { x: Math.round(x + window.scrollX), y: Math.round(y + window.scrollY), w: Math.round(w), h: Math.round(h) });
     }
   }
 
@@ -650,8 +650,8 @@
 
   function addAreaOverlay(rect, id) {
     const ov = ce('div', 'qa-feedback-selected-overlay');
-    ov.style.left = (rect.x + window.scrollX) + 'px';
-    ov.style.top = (rect.y + window.scrollY) + 'px';
+    ov.style.left = rect.x + 'px';
+    ov.style.top = rect.y + 'px';
     ov.style.width = rect.w + 'px';
     ov.style.height = rect.h + 'px';
     ov.style.borderColor = '#f59e0b';
@@ -1153,8 +1153,8 @@
   function addReviewAreaOverlay(fb, idx) {
     const rect = fb.areaBox;
     const ov = ce('div', 'qa-feedback-review-overlay');
-    ov.style.left = (rect.x + window.scrollX) + 'px';
-    ov.style.top = (rect.y + window.scrollY) + 'px';
+    ov.style.left = rect.x + 'px';
+    ov.style.top = rect.y + 'px';
     ov.style.width = rect.w + 'px';
     ov.style.height = rect.h + 'px';
     ov.dataset.qaReviewIdx = idx;

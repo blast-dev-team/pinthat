@@ -344,3 +344,157 @@
 - **수정 위치**: `showToast()` 함수 (946행)
 - **수정 내용**: `ce('div', '', msg)` → `ce('div', 'qa-feedback-toast', msg)`
 - **테스트 방법**: 세션 저장 후 토스트 표시 + 스타일 정상 확인
+
+---
+---
+
+# Phase 2 개발 요청서 — Chrome Extension 전환 + 자동화
+
+> 상태: 📋 요청 → 🟡 개발중 → 🔵 개발완료 → 🟢 검수완료
+> PRD 참조: docs/PRD.md v2.1
+> 실행 계획 참조: docs/IMPLEMENTATION-PLAN.md (Phase 2 섹션)
+> 대상 레포: qa-tool-extension (신규 생성)
+
+---
+
+### EXT-001: Chrome Extension 기본 구조 세팅
+- **상태**: 📋 요청
+- **요청일**: 2026-03-07
+- **서비스 본질 연결**: Extension 구조가 없으면 이후 모든 기능 개발 불가
+- **상세 스펙**:
+  - Manifest V3 기반 Chrome Extension 프로젝트 생성
+  - 레포명: `qa-tool-extension`
+  - **manifest.json**:
+    - `manifest_version`: 3
+    - `name`: "QA Feedback Tool"
+    - `version`: "2.0.0"
+    - `permissions`: `["activeTab", "storage", "clipboardWrite"]`
+    - `content_scripts`: 모든 http/https 페이지에 `content-script.js` + `styles.css` 주입
+    - `action`: `popup.html` 연결
+    - `commands`: Alt+Q 단축키 등록
+  - **content-script.js**: 빈 IIFE 구조 (`(function() { 'use strict'; })()`)
+  - **popup.html**: Extension 팝업 UI 껍데기 (QA 도구 ON/OFF 토글)
+  - **popup.js**: 팝업 이벤트 핸들링 + content script와 메시지 통신
+  - **background.js**: 서비스 워커 (메시지 중계)
+  - **styles.css**: QA 도구 전용 스타일 (빈 파일, EXT-002에서 채움)
+  - **icons/**: 16px, 48px, 128px 아이콘 (간단한 돋보기 아이콘 또는 플레이스홀더)
+- **의존 관계**: 없음
+- **테스트 방법**:
+  1. `chrome://extensions/` → 개발자 모드 ON → "압축 해제된 확장 프로그램 로드"
+  2. Extension 아이콘 표시 확인
+  3. 아무 사이트 방문 → 팝업 클릭 → UI 표시 확인
+  4. 콘솔에서 content-script.js 주입 확인
+
+---
+
+### EXT-002: Phase 1 기능 이식
+- **상태**: 📋 요청
+- **요청일**: 2026-03-07
+- **서비스 본질 연결**: 기존 QA 도구의 핵심 기능이 Extension에서 동일하게 동작해야 함
+- **상세 스펙**:
+  - `qa-feedback.js` (1825줄)의 전체 로직을 Extension 구조로 이식
+  - **저장소 전환**: `localStorage` → `chrome.storage.local` (비동기 처리)
+    - 모든 `localStorage.setItem/getItem/removeItem` → `chrome.storage.local.set/get/remove`
+    - async/await 패턴 사용
+  - **스타일 분리**: 인라인 `<style>` 주입 → `styles.css` 파일로 분리
+  - **이식 대상 기능 전체 목록**:
+    1. QA 패널 UI (플로팅 패널, 접기/드래그)
+    2. 검수 모드 ON/OFF (Alt+Q → chrome.commands 연동)
+    3. 요소 선택 모드 (호버 하이라이트 + 클릭 선택)
+    4. 텍스트 선택 모드
+    5. 영역 선택 모드 (드래그)
+    6. 피드백 팝업 (UI/기능/텍스트 분류 + 저장)
+    7. 마크다운 출력
+    8. 마크다운 가져오기 (역방향 복원)
+    9. 초기화
+    10. 세션 저장/불러오기/삭제
+    11. 재검수 모드 (진입/체크/완료/취소)
+    12. 재검수 완료 후 삭제 팝업
+    13. 단축키 설정
+    14. 애니메이션 중지
+  - **popup.html에서 제어**:
+    - QA 도구 ON/OFF 토글
+    - 현재 페이지 피드백 수 표시
+    - "세션 목록" 바로가기
+  - **CSS 네임스페이스 유지**: `.qa-feedback-`, `.qa-settings-`, `.qa-session-`
+- **의존 관계**: EXT-001 이후
+- **테스트 방법**:
+  1. demo.html에서 Phase 1 전체 플로우 재테스트
+  2. **핵심 확인**: 모달 위에서 핀 찍기 → z-index 문제 해결 확인
+  3. 멀티페이지 세션 (demo.html ↔ demo-projects.html)
+  4. 탭 닫기 → 다시 열기 → 데이터 유지 확인
+  5. 다른 사이트(google.com 등)에서도 Extension 동작 확인
+
+---
+
+### DEV-007: F-4 alert/confirm 캡처
+- **상태**: 📋 요청
+- **요청일**: 2026-03-07
+- **서비스 본질 연결**: 네이티브 팝업의 메시지를 놓치면 QA가 불완전함. 자동 캡처로 놓침 방지
+- **상세 스펙**:
+  - content script에서 `document_start` 타이밍에 alert/confirm override 주입
+  - `window.alert` override:
+    - 원본 메시지를 `chrome.storage.local`의 `qa-alerts`에 저장
+    - 저장 구조: `{ type: "alert", message: "...", timestamp: "ISO", page: pathname }`
+    - 원본 alert 호출도 유지 (사용자가 실제 alert을 볼 수 있게)
+  - `window.confirm` override: 동일 패턴 + 사용자 선택 결과(true/false)도 기록
+  - QA 패널에 **"🔔 캡처된 알림 (N)"** 버튼 추가
+  - 클릭 시 알림 목록 팝업:
+    - 각 알림: 타입 아이콘 + 메시지 + 시간
+    - "피드백 남기기" 버튼 → 일반 피드백으로 추가
+    - "전체 삭제" 버튼
+  - 마크다운 출력에 캡처된 알림 섹션 추가
+- **의존 관계**: EXT-002 이후
+- **테스트 방법**:
+  1. demo.html → "새 프로젝트" 버튼 → alert 발생
+  2. QA 패널 → "캡처된 알림" → 메시지 표시 확인
+  3. confirm 테스트 → 선택 결과 기록 확인
+  4. 마크다운 출력에 알림 섹션 포함 확인
+
+---
+
+### DEV-008: F-5 DEV-REQUEST 자동 생성
+- **상태**: 📋 요청
+- **요청일**: 2026-03-07
+- **서비스 본질 연결**: 마크다운 복사 후 수동으로 DEV-REQUEST 형식으로 정리하는 수작업 제거
+- **상세 스펙**:
+  - 마크다운 출력 모달에 **탭 UI 추가**: "마크다운" | "DEV-REQUEST"
+  - "DEV-REQUEST" 탭 선택 시 피드백을 DEV-REQUEST 템플릿 형식으로 자동 변환:
+    ```markdown
+    ### BUG-{번호}: [{피드백타입}] {피드백 요약 (첫 30자)}
+    - **상태**: 📋 요청
+    - **요청일**: {오늘 날짜}
+    - **서비스 본질 연결**: (수동 입력 영역)
+    - **수정 위치**: `{selector}`
+    - **현재 상태**: {현재 텍스트 또는 스타일 정보}
+    - **수정 내용**: {피드백 전체 내용}
+    - **테스트 방법**: 해당 요소 확인
+    ```
+  - 피드백 타입 자동 분류: UI → 스타일/레이아웃, 기능 → 동작/로직, 텍스트 → 문구
+  - "클립보드 복사" 버튼 → 클로드 코드에 바로 붙여넣기 가능
+- **의존 관계**: EXT-002 이후
+- **테스트 방법**:
+  1. 피드백 3개 (UI 1, 기능 1, 텍스트 1) → 마크다운 출력
+  2. "DEV-REQUEST" 탭 → 템플릿 형식 자동 생성 확인
+  3. 클립보드 복사 → 실제 형식 확인
+
+---
+
+### DEV-009: F-6 검수 리포트 자동화
+- **상태**: 📋 요청
+- **요청일**: 2026-03-07
+- **서비스 본질 연결**: 재검수 결과를 정량적으로 보여줘야 검수 품질이 관리됨
+- **상세 스펙**:
+  - 재검수 완료 시 리포트 확장:
+    - **통계 요약 테이블**: 수정됨/미수정/요소 못 찾음 건수 + 비율(%)
+    - **검수 차수 표시**: "2차 재검수" (세션의 검수 횟수 추적)
+    - **캡처된 알림 포함** (F-4 연동): 재검수 기간 중 발생한 알림 목록
+    - **DEV-REQUEST 동시 출력 옵션** (F-5 연동): 미수정 항목만 자동으로 DEV-REQUEST 형식 변환
+  - 세션 데이터에 `reviewCount` 필드 추가 (재검수 횟수)
+  - 마크다운 출력 모달에 탭: "리포트" | "미수정 DEV-REQUEST"
+- **의존 관계**: DEV-007 (F-4) + DEV-008 (F-5) 이후
+- **테스트 방법**:
+  1. 피드백 3개 세션 → 재검수 → 2건 수정, 1건 미수정
+  2. "재검수 완료" → 통계 테이블 확인 (67%/33%)
+  3. "미수정 DEV-REQUEST" 탭 → 미수정 1건만 DEV-REQUEST 형식으로 출력 확인
+  4. 같은 세션 2차 재검수 → 검수 차수 "2차" 표시 확인
