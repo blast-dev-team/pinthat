@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>QA Feedback Tool — Demo</title>
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#0a0a0a;--sf:#141414;--sf2:#1c1c1c;--bd:rgba(255,255,255,0.07);--tx:#f0f0f0;--dm:rgba(255,255,255,0.5);--ft:rgba(255,255,255,0.25);--ac:#3b82f6;--gn:#22c55e;--rd:#ef4444;--yw:#eab308;--or:#f97316;--r:12px;--f:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;--m:'SF Mono',SFMono-Regular,ui-monospace,Menlo,Consolas,monospace}
+body{font-family:var(--f);background:var(--bg);color:var(--tx);line-height:1.7;-webkit-font-smoothing:antialiased;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:24px}
+.w{max-width:720px;width:100%}
+.cap{text-align:center;font-size:.78rem;color:var(--ft);margin-top:14px}
+
+/* Browser frame */
+.br{background:var(--sf);border:1px solid var(--bd);border-radius:var(--r);overflow:hidden}
+.br-bar{display:flex;align-items:center;gap:7px;padding:9px 14px;border-bottom:1px solid var(--bd);background:var(--sf2)}
+.br-bar .dd{width:9px;height:9px;border-radius:50%}
+.br-bar .dd.r{background:var(--rd)}.br-bar .dd.y{background:var(--yw)}.br-bar .dd.g{background:var(--gn)}
+.br-bar .url{flex:1;margin-left:8px;padding:3px 10px;background:rgba(255,255,255,.04);border-radius:5px;font-family:var(--m);font-size:.72rem;color:var(--ft)}
+
+/* Animation stage */
+#stage{position:relative;height:520px;overflow:hidden;display:flex}
+#stage-site{flex:1;padding:18px 20px;overflow:hidden}
+.an-nav{display:flex;justify-content:space-between;align-items:center;padding-bottom:12px;border-bottom:1px solid var(--bd);margin-bottom:14px}
+.an-logo{font-weight:700;font-size:.95rem}
+.an-links{display:flex;gap:12px;font-size:.78rem;color:var(--dm)}
+.an-hero{text-align:center;padding:16px 0 12px}
+.an-hero h3{font-size:1.2rem;font-weight:700;margin-bottom:5px;letter-spacing:-.02em}
+.an-hero p{color:var(--dm);font-size:.8rem;margin-bottom:12px}
+.an-cta{display:inline-block;padding:6px 16px;background:var(--ac);color:#fff;border-radius:5px;font-size:.78rem;font-weight:600}
+.an-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px}
+.an-card{background:var(--sf2);border:1px solid var(--bd);border-radius:7px;padding:12px}
+.an-card .ci{width:20px;height:20px;border-radius:4px;margin-bottom:6px}
+.an-card h4{font-size:.72rem;font-weight:600;margin-bottom:2px}
+.an-card p{font-size:.65rem;color:var(--dm);line-height:1.4}
+
+/* Fake QA Tool Panel */
+#qa-panel{width:220px;flex-shrink:0;background:#1a1a1a;border-left:1px solid var(--bd);padding:14px 12px;font-size:.75rem;display:flex;flex-direction:column;gap:2px}
+.text-hl{position:absolute;background:rgba(59,130,246,.25);border-radius:2px;pointer-events:none;opacity:0;transition:opacity .3s;z-index:145}
+.text-hl.v{opacity:1}
+.area-box{position:absolute;border:2px dashed var(--or);background:rgba(249,115,22,.06);border-radius:4px;pointer-events:none;opacity:0;transition:opacity .3s;z-index:145}
+.area-box.v{opacity:1}
+#qa-panel .panel-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--bd)}
+#qa-panel .panel-hdr h4{font-size:.82rem;font-weight:700}
+#qa-panel .panel-hdr span{color:var(--ft);cursor:pointer}
+.qi{display:flex;align-items:center;gap:8px;padding:7px 6px;border-radius:6px;color:var(--dm);transition:background .15s}
+.qi:hover{background:rgba(255,255,255,.04)}
+.qi .icon{width:16px;text-align:center;font-size:.8rem}
+.qi .label{flex:1}
+.qi .badge{min-width:18px;height:18px;border-radius:9px;font-size:.6rem;font-weight:700;display:flex;align-items:center;justify-content:center;color:#fff}
+.qi .badge.red{background:var(--rd)}
+.qi .key{font-size:.6rem;color:var(--ft);font-family:var(--m)}
+.qi.active{color:var(--gn)}
+.qi.highlight{background:rgba(59,130,246,.08);color:var(--ac)}
+.divider{height:1px;background:var(--bd);margin:4px 0}
+
+/* Toggle switch */
+.toggle-row{display:flex;align-items:center;gap:8px;padding:6px;margin-bottom:4px}
+.toggle-sw{width:32px;height:18px;border-radius:9px;background:rgba(255,255,255,.15);position:relative;transition:background .3s;cursor:pointer}
+.toggle-sw .dot{width:14px;height:14px;border-radius:50%;background:#fff;position:absolute;top:2px;left:2px;transition:left .3s}
+.toggle-sw.on{background:var(--gn)}
+.toggle-sw.on .dot{left:16px}
+.toggle-label{font-size:.75rem;color:var(--dm)}
+.toggle-label.on{color:var(--gn)}
+
+/* Cursor, ring, pin */
+.fk-cursor{position:absolute;width:16px;height:20px;z-index:200;pointer-events:none;opacity:0;transition:opacity .3s;filter:drop-shadow(0 1px 2px rgba(0,0,0,.5))}
+.fk-cursor.v{opacity:1}
+.hi-ring{position:absolute;border:2px solid var(--ac);border-radius:4px;pointer-events:none;opacity:0;transition:opacity .2s;z-index:150}
+.hi-ring.v{opacity:1}
+.fk-pin{position:absolute;width:22px;height:22px;border-radius:50%;background:var(--rd);color:#fff;font-size:.63rem;font-weight:700;display:flex;align-items:center;justify-content:center;z-index:160;box-shadow:0 2px 8px rgba(239,68,68,.35);opacity:0;transform:scale(0);transition:opacity .3s,transform .3s cubic-bezier(.34,1.56,.64,1);pointer-events:none}
+.fk-pin.v{opacity:1;transform:scale(1)}
+.fk-pin.blue{background:var(--ac);box-shadow:0 2px 8px rgba(59,130,246,.35)}
+
+/* Feedback popup */
+.fk-popup{position:absolute;width:250px;background:#222;border-radius:10px;padding:12px 14px;box-shadow:0 4px 20px rgba(0,0,0,.4),0 0 0 1px rgba(255,255,255,.06);z-index:170;opacity:0;transform:scale(.95) translateY(4px);transition:opacity .25s,transform .25s cubic-bezier(.34,1.56,.64,1);pointer-events:none}
+.fk-popup.v{opacity:1;transform:scale(1) translateY(0)}
+.fk-popup .fp-el{font-size:.67rem;color:var(--ft);font-family:var(--m);margin-bottom:6px}
+.fk-popup .fp-tabs{display:flex;gap:4px;margin-bottom:8px}
+.fk-popup .fp-tab{padding:3px 9px;border-radius:5px;font-size:.67rem;font-weight:600;background:rgba(255,255,255,.05);color:var(--dm);transition:all .2s}
+.fk-popup .fp-tab.bug{background:rgba(239,68,68,.12);color:var(--rd)}
+.fk-popup .fp-tab.imp{background:rgba(59,130,246,.12);color:var(--ac)}
+.fk-popup .fp-input{width:100%;padding:7px 9px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:7px;color:#fff;font-size:.76rem;font-family:var(--f);min-height:28px}
+.fk-popup .fp-btns{display:flex;justify-content:flex-end;gap:5px;margin-top:7px}
+.fk-popup .fp-btn{padding:4px 10px;border-radius:5px;font-size:.68rem;font-weight:600}
+.fk-popup .fp-cn{background:rgba(255,255,255,.06);color:var(--dm)}
+.fk-popup .fp-sv{background:var(--ac);color:#fff}
+
+/* Typing cursor */
+.tc{display:inline-block;width:1px;height:.82em;background:var(--ac);margin-left:1px;animation:bl .7s step-end infinite;vertical-align:text-bottom}
+@keyframes bl{50%{opacity:0}}
+
+/* Markdown overlay */
+.fk-md{position:absolute;top:40px;left:20px;right:240px;bottom:20px;background:#0d1117;border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:0 18px;font-family:var(--m);font-size:.7rem;line-height:1.7;color:#8b949e;overflow-y:auto;z-index:180;white-space:pre-line;opacity:0;transform:scale(.96);transition:opacity .4s,transform .4s cubic-bezier(.16,1,.3,1)}
+.fk-md.v{opacity:1;transform:scale(1);padding:16px 18px}
+.fk-md .md-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,.08)}
+.fk-md .md-hdr span{font-family:var(--f);font-size:.78rem;font-weight:600;color:var(--tx)}
+.fk-md .md-copy{padding:4px 12px;background:var(--gn);color:#fff;border-radius:5px;font-size:.7rem;font-weight:600;font-family:var(--f);transition:all .2s;cursor:pointer;border:none}
+.fk-md .md-copy.copied{background:rgba(34,197,94,.15);color:var(--gn)}
+.fk-md .mh{color:#79c0ff;font-weight:700}
+.fk-md .mb{color:#d2a8ff}
+.fk-md .mg{color:#7ee787}
+
+@media(max-width:640px){.an-cards{grid-template-columns:1fr}#qa-panel{width:180px}}
+</style>
+</head>
+<body>
+
+<div class="w">
+  <div class="br">
+    <div class="br-bar">
+      <div class="dd r"></div><div class="dd y"></div><div class="dd g"></div>
+      <div class="url">localhost:3000/dashboard</div>
+    </div>
+    <div id="stage">
+      <!-- LEFT: Fake website -->
+      <div id="stage-site">
+        <div class="an-nav">
+          <div class="an-logo">Acme Inc</div>
+          <div class="an-links"><span>Features</span><span>Pricing</span><span>Docs</span></div>
+        </div>
+        <div class="an-hero">
+          <h3 id="t-heading">Build faster with AI</h3>
+          <p id="t-sub">Ship products 10x faster with our platform.</p>
+          <div class="an-cta" id="t-btn">Get Started Free →</div>
+        </div>
+        <div class="an-cards">
+          <div class="an-card" id="t-c1"><div class="ci" style="background:linear-gradient(135deg,#3b82f6,#8b5cf6)"></div><h4>Auto Deploy</h4><p>Push to git and deploy.</p></div>
+          <div class="an-card" id="t-c2"><div class="ci" style="background:linear-gradient(135deg,#22c55e,#06b6d4)"></div><h4>AI Reviews</h4><p>Instant code reviews.</p></div>
+          <div class="an-card" id="t-c3"><div class="ci" style="background:linear-gradient(135deg,#f97316,#ef4444)"></div><h4>Analytics</h4><p>Real-time tracking.</p></div>
+        </div>
+      </div>
+
+      <!-- RIGHT: Fake QA Tool Panel -->
+      <div id="qa-panel">
+        <div class="panel-hdr"><h4>QA Feedback</h4><span>—</span></div>
+        <div class="toggle-row">
+          <div class="toggle-sw" id="tog"><div class="dot"></div></div>
+          <div class="toggle-label" id="tog-label">Inspect OFF</div>
+        </div>
+        <div class="qi" id="qi-el"><span class="icon">📌</span><span class="label">Element select</span><span class="badge red" id="badge-el" style="opacity:0">0</span><span class="key">1</span></div>
+        <div class="qi" id="qi-tx"><span class="icon">📝</span><span class="label">Text select</span><span class="key">2</span></div>
+        <div class="qi" id="qi-ar"><span class="icon">⬜</span><span class="label">Area select</span><span class="key">3</span></div>
+        <div class="divider"></div>
+        <div class="qi" id="qi-md"><span class="icon">📋</span><span class="label">Markdown export</span><span class="key">E</span></div>
+        <div class="qi"><span class="icon">📥</span><span class="label">Markdown import</span></div>
+        <div class="qi"><span class="icon">🗑</span><span class="label">Reset</span><span class="key">R</span></div>
+      </div>
+
+      <!-- Overlays -->
+      <svg class="fk-cursor" id="cur" viewBox="0 0 24 24"><path d="M5 3l14 8-6.5 2L9 19.5z" fill="#fff" stroke="#000" stroke-width="1.5"/></svg>
+      <div class="hi-ring" id="ring"></div>
+      <div class="text-hl" id="txtHl"></div>
+      <div class="area-box" id="areaBox"></div>
+      <div class="fk-pin" id="p1">1</div>
+      <div class="fk-pin blue" id="p2">2</div>
+      <div class="fk-pin" id="p3" style="background:var(--or);box-shadow:0 2px 8px rgba(249,115,22,.35)">3</div>
+
+      <!-- Popup 1: Element select -->
+      <div class="fk-popup" id="pop1">
+        <div class="fp-el">button.cta-primary</div>
+        <div class="fp-tabs"><div class="fp-tab bug">Bug</div><div class="fp-tab">Improve</div><div class="fp-tab">Question</div></div>
+        <div class="fp-input" id="ty1"></div>
+        <div class="fp-btns"><span class="fp-btn fp-cn">Cancel</span><span class="fp-btn fp-sv">Save</span></div>
+      </div>
+
+      <!-- Popup 2: Text select -->
+      <div class="fk-popup" id="pop2">
+        <div class="fp-el">"Ship products 10x faster..."</div>
+        <div class="fp-tabs"><div class="fp-tab">Bug</div><div class="fp-tab imp">Improve</div><div class="fp-tab">Question</div></div>
+        <div class="fp-input" id="ty2"></div>
+        <div class="fp-btns"><span class="fp-btn fp-cn">Cancel</span><span class="fp-btn fp-sv">Save</span></div>
+      </div>
+
+      <!-- Popup 3: Area select -->
+      <div class="fk-popup" id="pop3">
+        <div class="fp-el">Area: x:32 y:280 460x140</div>
+        <div class="fp-tabs"><div class="fp-tab">Bug</div><div class="fp-tab">Improve</div><div class="fp-tab" style="background:rgba(234,179,8,.12);color:var(--yw)">Question</div></div>
+        <div class="fp-input" id="ty3"></div>
+        <div class="fp-btns"><span class="fp-btn fp-cn">Cancel</span><span class="fp-btn fp-sv">Save</span></div>
+      </div>
+
+      <div class="fk-md" id="mdB">
+        <div class="md-hdr"><span>Markdown Output</span><button class="md-copy" id="mdCopyBtn">📋 Copy to Clipboard</button></div>
+<span class="mh">## QA Feedback Report</span>
+<span class="mb">**Page:**</span> localhost:3000/dashboard
+<span class="mb">**Date:**</span> 2026-03-07  |  <span class="mb">**Total:**</span> 3 items
+---
+<span class="mh">### #1 [Bug] button.cta-primary</span>
+<span class="mg">Button overlaps on mobile</span>
+
+<span class="mh">### #2 [Improvement] "Ship products 10x..."</span>
+<span class="mg">Fix typo: "10x" → "10 times"</span>
+
+<span class="mh">### #3 [Question] Area: cards section</span>
+<span class="mg">Should cards have hover effects?</span>
+      </div>
+    </div>
+  </div>
+  <p class="cap">The full QA workflow — activate, click, describe, export — all in one loop.</p>
+</div>
+
+<!-- AUTO ANIMATION -->
+<script>
+(function(){
+  'use strict';
+
+  const stage = document.getElementById('stage');
+  const cur = document.getElementById('cur');
+  const ring = document.getElementById('ring');
+  const txtHl = document.getElementById('txtHl');
+  const areaBox = document.getElementById('areaBox');
+  const p1 = document.getElementById('p1');
+  const p2 = document.getElementById('p2');
+  const p3 = document.getElementById('p3');
+  const pop1 = document.getElementById('pop1');
+  const pop2 = document.getElementById('pop2');
+  const pop3 = document.getElementById('pop3');
+  const mdB = document.getElementById('mdB');
+  const ty1 = document.getElementById('ty1');
+  const ty2 = document.getElementById('ty2');
+  const ty3 = document.getElementById('ty3');
+  const tog = document.getElementById('tog');
+  const togLabel = document.getElementById('tog-label');
+  const badgeEl = document.getElementById('badge-el');
+  const qiEl = document.getElementById('qi-el');
+  const qiTx = document.getElementById('qi-tx');
+  const qiAr = document.getElementById('qi-ar');
+  const qiMd = document.getElementById('qi-md');
+
+  function gp(id){
+    const el=document.getElementById(id);
+    if(!el)return{x:200,y:200,w:80,h:24};
+    const er=el.getBoundingClientRect(),sr=stage.getBoundingClientRect();
+    return{x:er.left-sr.left,y:er.top-sr.top,w:er.width,h:er.height};
+  }
+
+  function mc(x,y,dur){
+    cur.style.transition=`left ${dur}ms cubic-bezier(.4,0,.2,1),top ${dur}ms cubic-bezier(.4,0,.2,1)`;
+    cur.style.left=x+'px';cur.style.top=y+'px';
+  }
+
+  function sr(x,y,w,h){ring.style.left=(x-3)+'px';ring.style.top=(y-3)+'px';ring.style.width=(w+6)+'px';ring.style.height=(h+6)+'px';ring.classList.add('v')}
+  function hr(){ring.classList.remove('v')}
+
+  function clearQiHL(){[qiEl,qiTx,qiAr,qiMd].forEach(e=>{ e.classList.remove('highlight'); e.style.background='' })}
+
+  function typeText(el,text,speed,cb){
+    let i=0;el.innerHTML='<span class="tc"></span>';
+    const iv=setInterval(()=>{if(i<text.length){el.innerHTML=text.slice(0,i+1)+'<span class="tc"></span>';i++}else{clearInterval(iv);el.innerHTML=text;if(cb)cb()}},speed);
+  }
+
+  const W=ms=>new Promise(r=>setTimeout(r,ms));
+
+  async function run(){
+    cur.classList.remove('v');
+    [p1,p2,p3].forEach(p=>p.classList.remove('v'));
+    [pop1,pop2,pop3].forEach(p=>p.classList.remove('v'));
+    mdB.classList.remove('v');txtHl.classList.remove('v');areaBox.classList.remove('v');
+    hr();clearQiHL();
+    tog.classList.remove('on');togLabel.textContent='Inspect OFF';togLabel.classList.remove('on');
+    badgeEl.style.opacity='0';badgeEl.textContent='0';
+    [ty1,ty2,ty3].forEach(t=>{t.textContent=''});
+
+    await W(800);
+
+    // Toggle ON
+    cur.style.left='30px';cur.style.top='30px';
+    cur.classList.add('v');
+    await W(300);
+    const togPos = gp('tog');
+    mc(togPos.x+togPos.w/2, togPos.y+togPos.h/2, 500);
+    await W(600);
+    tog.classList.add('on');
+    togLabel.textContent='Inspect ON';
+    togLabel.classList.add('on');
+    await W(400);
+
+    // Element Select
+    qiEl.classList.add('highlight');
+    qiEl.style.background='rgba(34,197,94,.08)';
+    const elRow = gp('qi-el');
+    mc(elRow.x+elRow.w/2, elRow.y+elRow.h/2, 350);
+    await W(500);
+    const btn = gp('t-btn');
+    mc(btn.x+btn.w/2, btn.y+btn.h/2, 600);
+    await W(700);
+    sr(btn.x, btn.y, btn.w, btn.h);
+    await W(300);
+    p1.style.left=(btn.x+btn.w-4)+'px';
+    p1.style.top=(btn.y-8)+'px';
+    p1.classList.add('v');
+    badgeEl.style.opacity='1';badgeEl.textContent='1';
+    await W(250);hr();
+    let px1=btn.x+btn.w/2-125; if(px1<10)px1=10;
+    pop1.style.left=px1+'px';
+    pop1.style.top=(btn.y+btn.h+8)+'px';
+    pop1.classList.add('v');
+    await W(350);
+    await new Promise(res=>typeText(ty1,'Button overlaps on mobile',40,res));
+    await W(400);
+    pop1.classList.remove('v');
+    clearQiHL();
+    await W(500);
+
+    // Text Select
+    qiTx.classList.add('highlight');
+    qiTx.style.background='rgba(59,130,246,.08)';
+    const txRow = gp('qi-tx');
+    mc(txRow.x+txRow.w/2, txRow.y+txRow.h/2, 350);
+    await W(500);
+    const sub = gp('t-sub');
+    mc(sub.x+20, sub.y+sub.h/2, 500);
+    await W(600);
+    txtHl.style.left=(sub.x+10)+'px';
+    txtHl.style.top=(sub.y+2)+'px';
+    txtHl.style.width='0px';
+    txtHl.style.height=(sub.h-4)+'px';
+    txtHl.classList.add('v');
+    let hlW=0;
+    const hlTarget=Math.min(sub.w-20, 280);
+    await new Promise(res=>{
+      const iv=setInterval(()=>{
+        hlW+=8;
+        txtHl.style.width=hlW+'px';
+        cur.style.transition='left 30ms linear';
+        cur.style.left=(sub.x+10+hlW)+'px';
+        if(hlW>=hlTarget){clearInterval(iv);res()}
+      },20);
+    });
+    await W(300);
+    p2.style.left=(sub.x+hlTarget+10)+'px';
+    p2.style.top=(sub.y-8)+'px';
+    p2.classList.add('v');
+    badgeEl.textContent='2';
+    await W(250);
+    let px2=sub.x+hlTarget/2-125; if(px2<10)px2=10;
+    pop2.style.left=px2+'px';
+    pop2.style.top=(sub.y+sub.h+8)+'px';
+    pop2.classList.add('v');
+    await W(350);
+    await new Promise(res=>typeText(ty2,'Fix typo: "10x" → "10 times"',40,res));
+    await W(400);
+    pop2.classList.remove('v');
+    txtHl.classList.remove('v');
+    clearQiHL();
+    await W(500);
+
+    // Area Select
+    qiAr.classList.add('highlight');
+    qiAr.style.background='rgba(249,115,22,.08)';
+    const arRow = gp('qi-ar');
+    mc(arRow.x+arRow.w/2, arRow.y+arRow.h/2, 350);
+    await W(500);
+    const c1 = gp('t-c1');
+    const c3 = gp('t-c3');
+    const areaX = c1.x - 4;
+    const areaY = c1.y - 4;
+    const areaW = (c3.x + c3.w) - c1.x + 8;
+    const areaH = c1.h + 8;
+    mc(areaX, areaY, 500);
+    await W(600);
+    areaBox.style.left=areaX+'px';
+    areaBox.style.top=areaY+'px';
+    areaBox.style.width='0px';
+    areaBox.style.height='0px';
+    areaBox.classList.add('v');
+    let aw=0,ah=0;
+    await new Promise(res=>{
+      const iv=setInterval(()=>{
+        aw=Math.min(aw+12,areaW);
+        ah=Math.min(ah+4,areaH);
+        areaBox.style.width=aw+'px';
+        areaBox.style.height=ah+'px';
+        cur.style.transition='left 25ms linear, top 25ms linear';
+        cur.style.left=(areaX+aw)+'px';
+        cur.style.top=(areaY+ah)+'px';
+        if(aw>=areaW && ah>=areaH){clearInterval(iv);res()}
+      },20);
+    });
+    await W(300);
+    p3.style.left=(areaX+areaW-4)+'px';
+    p3.style.top=(areaY-8)+'px';
+    p3.classList.add('v');
+    badgeEl.textContent='3';
+    await W(250);
+    let px3=areaX+areaW/2-125; if(px3<10)px3=10;
+    if(px3+250>stage.offsetWidth-230)px3=stage.offsetWidth-230-260;
+    pop3.style.left=px3+'px';
+    pop3.style.top=(areaY+areaH+8)+'px';
+    pop3.classList.add('v');
+    await W(350);
+    await new Promise(res=>typeText(ty3,'Should cards have hover effects?',40,res));
+    await W(400);
+    pop3.classList.remove('v');
+    areaBox.classList.remove('v');
+    clearQiHL();
+    await W(500);
+
+    // Markdown export
+    qiMd.classList.add('highlight');
+    const mdPos = gp('qi-md');
+    mc(mdPos.x+mdPos.w/2, mdPos.y+mdPos.h/2, 400);
+    await W(500);
+    cur.classList.remove('v');
+    mdB.classList.add('v');
+    const copyBtn = document.getElementById('mdCopyBtn');
+    copyBtn.textContent='📋 Copy to Clipboard';
+    copyBtn.classList.remove('copied');
+    await W(1500);
+    copyBtn.textContent='✓ Copied!';
+    copyBtn.classList.add('copied');
+    await W(3000);
+
+    // Reset
+    mdB.classList.remove('v');
+    clearQiHL();
+    await W(400);
+    [p1,p2,p3].forEach(p=>p.classList.remove('v'));
+    tog.classList.remove('on');togLabel.textContent='Inspect OFF';togLabel.classList.remove('on');
+    badgeEl.style.opacity='0';
+    await W(1500);
+
+    run();
+  }
+
+  const obs=new IntersectionObserver(entries=>{
+    entries.forEach(e=>{if(e.isIntersecting){run();obs.disconnect()}});
+  },{threshold:.3});
+  obs.observe(stage);
+})();
+</script>
+
+</body>
+</html>

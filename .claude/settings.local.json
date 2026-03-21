@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mkdir -p ~/.claude && cp ~/LEEYEONJIN/claude-global/CLAUDE.md ~/.claude/CLAUDE.md)",
+      "Bash(cd \"/Users/jeechangyoon/LEEYEONJIN/QA TOOL\" && python3 -m http.server 8080)",
+      "Bash(open http://localhost:8080/demo.html)",
+      "Bash(open http://localhost:8080/demo.html && open http://localhost:8080/demo-projects.html)",
+      "Bash(cd \"/Users/jeechangyoon/LEEYEONJIN/QA TOOL\" && gh auth status 2>&1)",
+      "Bash(cd \"/Users/jeechangyoon/LEEYEONJIN/QA TOOL\" && gh repo create qa-tool --private --source=. --remote=origin --push)",
+      "Bash(lsof -ti:8080 2>/dev/null)"
+    ]
+  }
+}
