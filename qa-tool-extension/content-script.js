@@ -1,0 +1,2047 @@
+(function() {
+  'use strict';
+
+  /* ===== State ===== */
+  const STATE = {
+    active: false,
+    mode: 'element',
+    feedbacks: [],
+    nextId: 1,
+    detailLevel: 'standard',
+    animPaused: false,
+    panelCollapsed: false,
+    panelPos: null,
+    reviewMode: false,
+    reviewSessionId: null,
+    savedFeedbacksBeforeReview: null,
+    moveMode: false,
+    moveSource: null,
+  };
+
+  /* ===== Storage (chrome.storage.local) ===== */
+  const STORAGE_KEY = 'qa-feedbacks-' + location.origin + location.pathname;
+  const SESSIONS_KEY = 'qa-sessions';
+
+  async function saveFeedbacks() {
+    try {
+      const data = STATE.feedbacks.map(fb => ({ ...fb, el: null }));
+      await chrome.storage.local.set({ [STORAGE_KEY]: { feedbacks: data, nextId: STATE.nextId } });
+    } catch(e) {}
+  }
+
+  async function restoreFeedbacks() {
+    try {
+      const result = await chrome.storage.local.get(STORAGE_KEY);
+      const saved = result[STORAGE_KEY];
+      if (!saved) return;
+      const { feedbacks, nextId } = saved;
+      if (!feedbacks || feedbacks.length === 0) return;
+
+      STATE.feedbacks = feedbacks;
+      STATE.nextId = nextId || feedbacks.length + 1;
+
+      feedbacks.forEach(fb => {
+        if (fb.selector) {
+          const el = document.querySelector(fb.selector);
+          if (el) {
+            fb.el = el;
+            if (fb.fbType === '\uC704\uCE58\uC774\uB3D9') {
+              addMoveOverlay(el, fb.id);
+            } else {
+              addOverlay(el, fb.id);
+            }
+          }
+        }
+      });
+
+      updateCount();
+    } catch(e) {}
+  }
+
+  async function getSessionsData() {
+    try {
+      const result = await chrome.storage.local.get(SESSIONS_KEY);
+      return result[SESSIONS_KEY] || { sessions: [] };
+    } catch(e) { return { sessions: [] }; }
+  }
+
+  async function saveSessionsData(data) {
+    await chrome.storage.local.set({ [SESSIONS_KEY]: data });
+  }
+
+  async function cleanOldSessions(data) {
+    const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+    const old = data.sessions.filter(s => new Date(s.createdAt).getTime() < thirtyDaysAgo);
+    if (old.length > 0) {
+      data.sessions = data.sessions.filter(s => new Date(s.createdAt).getTime() >= thirtyDaysAgo);
+      await saveSessionsData(data);
+    }
+    return old;
+  }
+
+  /* ===== Helpers ===== */
+  function qs(s, root) { return (root || document).querySelector(s); }
+  function ce(tag, cls, html) {
+    const el = document.createElement(tag);
+    if (cls) el.className = cls;
+    if (html) el.innerHTML = html;
+    return el;
+  }
+
+  function getSelector(el) {
+    if (el.id) return '#' + el.id;
+    const parts = [];
+    let cur = el;
+    while (cur && cur !== document.body && parts.length < 5) {
+      let s = cur.tagName.toLowerCase();
+      if (cur.id) { parts.unshift('#' + cur.id); break; }
+      if (cur.className && typeof cur.className === 'string') {
+        const cls = cur.className.trim().split(/\s+/).filter(c => !c.startsWith('qa-feedback-')).slice(0, 2).join('.');
+        if (cls) s += '.' + cls;
+      }
+      const parent = cur.parentElement;
+      if (parent) {
+        const siblings = Array.from(parent.children).filter(c => c.tagName === cur.tagName);
+        if (siblings.length > 1) s += ':nth-child(' + (Array.from(parent.children).indexOf(cur) + 1) + ')';
+      }
+      parts.unshift(s);
+      cur = cur.parentElement;
+    }
+    return parts.join(' > ');
+  }
+
+  function getSection(el) {
+    let cur = el;
+    while (cur) {
+      if (cur.tagName === 'SECTION' || cur.tagName === 'FOOTER' || cur.tagName === 'HEADER' || cur.tagName === 'NAV') {
+        return cur.id || cur.className.split(/\s+/)[0] || cur.tagName.toLowerCase();
+      }
+      cur = cur.parentElement;
+    }
+    return 'body';
+  }
+
+  function truncate(s, n) { return s && s.length > n ? s.slice(0, n) + '...' : s; }
+
+  function getComputedProps(el) {
+    const cs = getComputedStyle(el);
+    return {
+      color: cs.color, fontSize: cs.fontSize, fontWeight: cs.fontWeight,
+      backgroundColor: cs.backgroundColor, padding: cs.padding, margin: cs.margin,
+      display: cs.display, position: cs.position, border: cs.border,
+      lineHeight: cs.lineHeight, textAlign: cs.textAlign
+    };
+  }
+
+  function captureElement(el) {
+    const rect = el.getBoundingClientRect();
+    return {
+      selector: getSelector(el),
+      section: getSection(el),
+      tagName: el.tagName,
+      classes: Array.from(el.classList).filter(c => !c.startsWith('qa-feedback-')),
+      id: el.id || '',
+      textContent: truncate((el.textContent || '').trim(), 120),
+      bbox: { x: Math.round(rect.x), y: Math.round(rect.y), w: Math.round(rect.width), h: Math.round(rect.height) },
+      styles: getComputedProps(el)
+    };
+  }
+
+  /* ===== Panel UI ===== */
+  let panel, hoverOverlay;
+
+  function buildPanel() {
+    panel = ce('div', 'qa-feedback-panel');
+    panel.style.bottom = '20px';
+    panel.style.right = '20px';
+    panel.innerHTML = `
+      <div class="qa-feedback-panel-inner">
+        <div class="qa-feedback-panel-header" id="qaPanelHeader">
+          <span>QA 검수 도구</span>
+          <button class="qa-feedback-collapse-btn" id="qaCollapseBtn">\u2212</button>
+        </div>
+        <div class="qa-feedback-panel-body" id="qaPanelBody">
+          <button class="qa-feedback-btn" id="qaToggleMode">
+            <span class="qa-fb-icon">\uD83D\uDD0D</span> 검수 모드 OFF <span class="qa-shortcut-hint" style="font-size:10px;color:#64748b;margin-left:auto;">\u2325Q</span>
+          </button>
+          <button class="qa-feedback-btn" id="qaModeElement" disabled>
+            <span class="qa-fb-icon">\uD83D\uDCCC</span> 요소 선택 <span class="qa-feedback-badge-count" id="qaCount">0</span> <span class="qa-shortcut-hint" data-action="element" style="font-size:10px;color:#64748b;margin-left:auto;">1</span>
+          </button>
+          <button class="qa-feedback-btn" id="qaAnimPause" disabled>
+            <span class="qa-fb-icon">\u23F8\uFE0F</span> 애니메이션 중지
+          </button>
+          <div class="qa-feedback-sep"></div>
+          <button class="qa-feedback-btn" id="qaExport">
+            <span class="qa-fb-icon">\uD83D\uDCCB</span> 마크다운 출력 <span class="qa-shortcut-hint" data-action="export" style="font-size:10px;color:#64748b;margin-left:auto;">E</span>
+          </button>
+          <button class="qa-feedback-btn" id="qaMarkdownImport">
+            <span class="qa-fb-icon">\uD83D\uDCCB</span> 마크다운 가져오기
+          </button>
+          <button class="qa-feedback-btn" id="qaReset" disabled>
+            <span class="qa-fb-icon">\uD83D\uDDD1\uFE0F</span> 초기화 <span class="qa-shortcut-hint" data-action="reset" style="font-size:10px;color:#64748b;margin-left:auto;">R</span>
+          </button>
+          <div class="qa-feedback-sep"></div>
+          <button class="qa-feedback-btn" id="qaSessionSave">
+            <span class="qa-fb-icon">\uD83D\uDCBE</span> 세션 저장
+          </button>
+          <button class="qa-feedback-btn" id="qaSessionLoad">
+            <span class="qa-fb-icon">\uD83D\uDCC2</span> 세션 불러오기
+          </button>
+          <div class="qa-feedback-sep"></div>
+          <button class="qa-feedback-btn" id="qaSettingsToggle">
+            <span class="qa-fb-icon">\u2699\uFE0F</span> 단축키 설정
+          </button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(panel);
+
+    hoverOverlay = ce('div', 'qa-feedback-hover-overlay');
+    hoverOverlay.style.display = 'none';
+    document.body.appendChild(hoverOverlay);
+
+    qs('#qaCollapseBtn').onclick = toggleCollapse;
+    qs('#qaToggleMode').onclick = toggleActive;
+    qs('#qaModeElement').onclick = () => { STATE.mode = 'element'; updateModeButton(); };
+    qs('#qaAnimPause').onclick = toggleAnimPause;
+    qs('#qaExport').onclick = showOutput;
+    qs('#qaReset').onclick = resetAll;
+    qs('#qaSessionSave').onclick = saveSession;
+    qs('#qaSessionLoad').onclick = loadSessionList;
+    qs('#qaMarkdownImport').onclick = showMarkdownImport;
+
+    initPanelDrag();
+  }
+
+  function toggleCollapse() {
+    STATE.panelCollapsed = !STATE.panelCollapsed;
+    qs('#qaPanelBody').style.display = STATE.panelCollapsed ? 'none' : '';
+    qs('#qaCollapseBtn').textContent = STATE.panelCollapsed ? '+' : '\u2212';
+  }
+
+  function toggleActive() {
+    STATE.active = !STATE.active;
+    const btn = qs('#qaToggleMode');
+    btn.classList.toggle('active', STATE.active);
+    btn.innerHTML = `<span class="qa-fb-icon">\uD83D\uDD0D</span> 검수 모드 ${STATE.active ? 'ON' : 'OFF'}`;
+    const modeBtns = ['#qaModeElement','#qaAnimPause','#qaReset'];
+    modeBtns.forEach(s => { qs(s).disabled = !STATE.active; });
+    if (STATE.active) {
+      STATE.mode = 'element';
+      document.body.style.cursor = 'pointer';
+    } else {
+      hoverOverlay.style.display = 'none';
+      document.body.style.cursor = '';
+    }
+    updateModeButton();
+  }
+
+  function updateModeButton() {
+    const btn = qs('#qaModeElement');
+    if (btn) btn.classList.toggle('active', STATE.active && STATE.mode === 'element');
+  }
+
+  function toggleAnimPause() {
+    STATE.animPaused = !STATE.animPaused;
+    document.documentElement.style.setProperty('--qa-anim', STATE.animPaused ? 'paused' : 'running');
+    if (STATE.animPaused) {
+      if (!qs('#qaAnimStyle')) {
+        const s = ce('style');
+        s.id = 'qaAnimStyle';
+        s.textContent = '*, *::before, *::after { animation-play-state: paused !important; transition-duration: 0s !important; }';
+        document.head.appendChild(s);
+      }
+    } else {
+      const s = qs('#qaAnimStyle');
+      if (s) s.remove();
+    }
+    qs('#qaAnimPause').classList.toggle('active', STATE.animPaused);
+    qs('#qaAnimPause').innerHTML = `<span class="qa-fb-icon">\u23F8\uFE0F</span> 애니메이션 ${STATE.animPaused ? '재개' : '중지'}`;
+  }
+
+  function updateCount() {
+    qs('#qaCount').textContent = STATE.feedbacks.length;
+  }
+
+  /* ===== Panel Drag ===== */
+  function initPanelDrag() {
+    const header = qs('#qaPanelHeader');
+    let dragging = false, offX, offY;
+    header.addEventListener('mousedown', e => {
+      if (e.target.closest('.qa-feedback-collapse-btn')) return;
+      dragging = true;
+      const rect = panel.getBoundingClientRect();
+      offX = e.clientX - rect.left;
+      offY = e.clientY - rect.top;
+      e.preventDefault();
+    });
+    document.addEventListener('mousemove', e => {
+      if (!dragging) return;
+      panel.style.left = (e.clientX - offX) + 'px';
+      panel.style.top = (e.clientY - offY) + 'px';
+      panel.style.right = 'auto';
+      panel.style.bottom = 'auto';
+    });
+    document.addEventListener('mouseup', () => { dragging = false; });
+  }
+
+  /* ===== Event Handlers ===== */
+  function isQaElement(el) {
+    return el && (el.closest('.qa-feedback-panel') || el.closest('.qa-feedback-popup') || el.closest('.qa-feedback-review-popup') || el.closest('.qa-feedback-output-overlay') || el.closest('.qa-settings-overlay') || el.closest('.qa-feedback-move-guide') || el.classList.contains('qa-feedback-hover-overlay') || el.classList.contains('qa-feedback-selected-overlay') || el.classList.contains('qa-feedback-number-badge') || el.classList.contains('qa-feedback-review-overlay') || el.classList.contains('qa-feedback-review-badge') || el.classList.contains('qa-feedback-move-source-overlay') || el.classList.contains('qa-feedback-toast'));
+  }
+
+  function onMouseMove(e) {
+    if (!hoverOverlay) return;
+    if (!STATE.active || STATE.mode !== 'element' || isQaElement(e.target)) {
+      hoverOverlay.style.display = 'none';
+      return;
+    }
+    const rect = e.target.getBoundingClientRect();
+    hoverOverlay.style.display = 'block';
+    hoverOverlay.style.left = rect.left + 'px';
+    hoverOverlay.style.top = rect.top + 'px';
+    hoverOverlay.style.width = rect.width + 'px';
+    hoverOverlay.style.height = rect.height + 'px';
+  }
+
+  function onClick(e) {
+    if (!hoverOverlay) return;
+    if (!STATE.active || isQaElement(e.target)) return;
+    if (STATE.mode === 'element') {
+      e.preventDefault();
+      e.stopPropagation();
+      hoverOverlay.style.display = 'none';
+      if (STATE.moveMode) {
+        handleMoveDestination(e.target);
+      } else {
+        showTypeSelectionPopup(e.target, e.shiftKey);
+      }
+    }
+  }
+
+  document.addEventListener('mousemove', onMouseMove, true);
+  document.addEventListener('click', onClick, true);
+
+  document.addEventListener('touchend', e => {
+    if (!STATE.active || STATE.mode !== 'element' || isQaElement(e.target)) return;
+    e.preventDefault();
+    showTypeSelectionPopup(e.target, false);
+  }, { passive: false });
+
+  /* ===== Popup Drag Helper ===== */
+  function makePopupDraggable(popup) {
+    const header = popup.querySelector('.qa-feedback-popup-header') || popup.querySelector('.qa-feedback-review-popup-header');
+    if (!header) return;
+    let dragging = false, offX = 0, offY = 0;
+    header.addEventListener('mousedown', e => {
+      dragging = true;
+      const rect = popup.getBoundingClientRect();
+      offX = e.clientX - rect.left;
+      offY = e.clientY - rect.top;
+      e.preventDefault();
+    });
+    document.addEventListener('mousemove', e => {
+      if (!dragging) return;
+      popup.style.left = Math.max(0, e.clientX - offX) + 'px';
+      popup.style.top = Math.max(0, e.clientY - offY) + 'px';
+    });
+    document.addEventListener('mouseup', () => { dragging = false; });
+  }
+
+  /* ===== Feedback Popup ===== */
+  let currentPopup = null;
+
+  /* 피드백 유형 선택 팝업: 요소 클릭 시 먼저 유형을 선택 */
+  function showTypeSelectionPopup(el, isShift) {
+    if (currentPopup) currentPopup.remove();
+
+    if (isShift && STATE.feedbacks.length > 0 && el) {
+      const last = STATE.feedbacks[STATE.feedbacks.length - 1];
+      if (!last.multiEls) last.multiEls = [];
+      last.multiEls.push(captureElement(el));
+      addOverlay(el, STATE.feedbacks.length);
+      updateCount();
+      saveFeedbacks();
+      return;
+    }
+
+    const info = captureElement(el);
+    const popup = ce('div', 'qa-feedback-popup');
+
+    const r = el.getBoundingClientRect();
+    let posY = Math.min(r.bottom + 10, window.innerHeight - 200);
+    let posX = Math.min(r.left, window.innerWidth - 280);
+    if (posY < 10) posY = 10;
+    if (posX < 10) posX = 10;
+
+    popup.style.top = posY + 'px';
+    popup.style.left = posX + 'px';
+
+    popup.innerHTML = `
+      <div class="qa-feedback-popup-header">
+        <div class="qa-fb-sel">${info.selector}</div>
+        <div class="qa-fb-loc">${info.section}</div>
+      </div>
+      <div class="qa-feedback-type-select">
+        <div style="font-size:12px;color:#94a3b8;margin-bottom:8px;">피드백 유형 선택</div>
+        <div class="qa-feedback-type-buttons">
+          <button class="qa-feedback-type-btn" data-type="UI">\uD83C\uDFA8 UI</button>
+          <button class="qa-feedback-type-btn" data-type="\uAE30\uB2A5">\u2699\uFE0F 기능</button>
+          <button class="qa-feedback-type-btn" data-type="\uD14D\uC2A4\uD2B8">\uD83D\uDCDD 텍스트</button>
+          <button class="qa-feedback-type-btn" data-type="\uC704\uCE58\uC774\uB3D9">\uD83D\uDCCD 위치 이동</button>
+        </div>
+      </div>
+      <div class="qa-feedback-popup-footer">
+        <button class="qa-fb-cancel" id="qaPopupCancel">취소</button>
+      </div>
+    `;
+
+    document.body.appendChild(popup);
+    currentPopup = popup;
+    makePopupDraggable(popup);
+
+    popup.querySelectorAll('.qa-feedback-type-btn').forEach(btn => {
+      btn.onclick = () => {
+        const type = btn.dataset.type;
+        popup.remove();
+        currentPopup = null;
+        if (type === '\uC704\uCE58\uC774\uB3D9') {
+          showMoveSubOptions(el, info);
+          return;
+        }
+        showFeedbackInputPopup(el, info, type);
+      };
+    });
+
+    qs('#qaPopupCancel', popup).onclick = () => { popup.remove(); currentPopup = null; };
+  }
+
+  /* 피드백 입력 팝업: 유형 선택 후 실제 피드백 텍스트를 입력 */
+  function showFeedbackInputPopup(el, info, fbType) {
+    if (currentPopup) currentPopup.remove();
+
+    const popup = ce('div', 'qa-feedback-popup');
+
+    const r = el.getBoundingClientRect();
+    let posY = Math.min(r.bottom + 10, window.innerHeight - 300);
+    let posX = Math.min(r.left, window.innerWidth - 360);
+    if (posY < 10) posY = 10;
+    if (posX < 10) posX = 10;
+
+    popup.style.top = posY + 'px';
+    popup.style.left = posX + 'px';
+
+    const typeLabels = { 'UI': '\uD83C\uDFA8 UI', '\uAE30\uB2A5': '\u2699\uFE0F 기능', '\uD14D\uC2A4\uD2B8': '\uD83D\uDCDD 텍스트' };
+
+    popup.innerHTML = `
+      <div class="qa-feedback-popup-header">
+        <div class="qa-fb-sel">${info.selector}</div>
+        <div class="qa-fb-loc">${info.section}</div>
+        <div style="margin-top:4px;"><span class="qa-feedback-type-label">${typeLabels[fbType] || fbType}</span></div>
+      </div>
+      <div class="qa-feedback-popup-body">
+        <textarea placeholder="피드백을 입력하세요..." id="qaFeedbackInput" autofocus></textarea>
+      </div>
+      <div class="qa-feedback-popup-footer">
+        <button class="qa-fb-cancel" id="qaPopupCancel">취소</button>
+        <button class="qa-fb-save" id="qaPopupSave">저장</button>
+      </div>
+    `;
+
+    document.body.appendChild(popup);
+    currentPopup = popup;
+    makePopupDraggable(popup);
+
+    setTimeout(() => qs('#qaFeedbackInput', popup).focus(), 50);
+
+    qs('#qaPopupCancel', popup).onclick = () => { popup.remove(); currentPopup = null; };
+    qs('#qaPopupSave', popup).onclick = () => {
+      const fb = qs('#qaFeedbackInput', popup).value.trim();
+      if (!fb) { qs('#qaFeedbackInput', popup).style.borderColor = '#ef4444'; return; }
+      const entry = {
+        id: STATE.nextId++,
+        el: el,
+        selector: info.selector,
+        section: info.section,
+        tagName: info.tagName,
+        classes: info.classes,
+        textContent: info.textContent,
+        bbox: info.bbox,
+        styles: info.styles,
+        feedback: fb,
+        fbType: fbType,
+        moveTarget: null,
+      };
+      STATE.feedbacks.push(entry);
+      addOverlay(el, entry.id);
+      updateCount();
+      saveFeedbacks();
+      popup.remove();
+      currentPopup = null;
+    };
+
+    qs('#qaFeedbackInput', popup).addEventListener('keydown', e => {
+      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) qs('#qaPopupSave', popup).click();
+    });
+  }
+
+  /* ===== Move Mode (위치 이동) ===== */
+  let moveGuide = null;
+
+  /* 서브 옵션 팝업: 컴포넌트 이동 / 자유 위치 이동 */
+  function showMoveSubOptions(el, info) {
+    if (currentPopup) currentPopup.remove();
+
+    const popup = ce('div', 'qa-feedback-popup');
+    const r = el.getBoundingClientRect();
+    let posY = Math.min(r.bottom + 10, window.innerHeight - 200);
+    let posX = Math.min(r.left, window.innerWidth - 280);
+    if (posY < 10) posY = 10;
+    if (posX < 10) posX = 10;
+    popup.style.top = posY + 'px';
+    popup.style.left = posX + 'px';
+
+    popup.innerHTML = `
+      <div class="qa-feedback-popup-header">
+        <div class="qa-fb-sel">${info.selector}</div>
+        <div class="qa-fb-loc">${info.section}</div>
+      </div>
+      <div class="qa-feedback-type-select">
+        <div style="font-size:12px;color:#94a3b8;margin-bottom:8px;">이동 방식 선택</div>
+        <div class="qa-feedback-move-sub-buttons">
+          <button class="qa-feedback-move-sub-btn" data-move="component">\uD83D\uDCE6 컴포넌트 이동</button>
+          <button class="qa-feedback-move-sub-btn" data-move="free">\uD83D\uDD00 자유 위치 이동</button>
+        </div>
+      </div>
+      <div class="qa-feedback-popup-footer">
+        <button class="qa-fb-cancel" id="qaPopupCancel">취소</button>
+      </div>
+    `;
+
+    document.body.appendChild(popup);
+    currentPopup = popup;
+    makePopupDraggable(popup);
+
+    popup.querySelectorAll('.qa-feedback-move-sub-btn').forEach(btn => {
+      btn.onclick = () => {
+        popup.remove();
+        currentPopup = null;
+        if (btn.dataset.move === 'component') {
+          showComponentDirectionPopup(el, info);
+        } else {
+          enterFreeMoveMode(el, info);
+        }
+      };
+    });
+
+    qs('#qaPopupCancel', popup).onclick = () => { popup.remove(); currentPopup = null; };
+  }
+
+  /* --- A. 컴포넌트 이동 --- */
+  function showComponentDirectionPopup(el, info) {
+    if (currentPopup) currentPopup.remove();
+
+    const popup = ce('div', 'qa-feedback-popup');
+    const r = el.getBoundingClientRect();
+    let posY = Math.min(r.bottom + 10, window.innerHeight - 300);
+    let posX = Math.min(r.left, window.innerWidth - 360);
+    if (posY < 10) posY = 10;
+    if (posX < 10) posX = 10;
+    popup.style.top = posY + 'px';
+    popup.style.left = posX + 'px';
+
+    popup.innerHTML = `
+      <div class="qa-feedback-popup-header">
+        <div style="margin-bottom:4px;"><span class="qa-feedback-type-label">\uD83D\uDCE6 컴포넌트 이동</span></div>
+        <div class="qa-fb-sel">${info.selector}</div>
+      </div>
+      <div class="qa-feedback-move-options">
+        <div style="font-size:12px;color:#94a3b8;margin-bottom:8px;">이동 방향 선택</div>
+        <div class="qa-feedback-move-direction-buttons">
+          <button class="qa-feedback-move-option-btn" data-dir="left">\u2B05 왼쪽</button>
+          <button class="qa-feedback-move-option-btn" data-dir="right">\u27A1 오른쪽</button>
+          <button class="qa-feedback-move-option-btn" data-dir="up">\u2B06 위로</button>
+          <button class="qa-feedback-move-option-btn" data-dir="down">\u2B07 아래로</button>
+        </div>
+      </div>
+      <div class="qa-feedback-popup-footer">
+        <button class="qa-fb-cancel" id="qaPopupCancel">취소</button>
+      </div>
+    `;
+
+    document.body.appendChild(popup);
+    currentPopup = popup;
+    makePopupDraggable(popup);
+
+    popup.querySelectorAll('.qa-feedback-move-option-btn').forEach(btn => {
+      btn.onclick = () => {
+        const dir = btn.dataset.dir;
+        popup.remove();
+        currentPopup = null;
+        showComponentMemoPopup(el, info, dir);
+      };
+    });
+
+    qs('#qaPopupCancel', popup).onclick = () => { popup.remove(); currentPopup = null; };
+  }
+
+  function showComponentMemoPopup(el, info, direction) {
+    if (currentPopup) currentPopup.remove();
+
+    const dirLabels = { left: '\u2B05 왼쪽', right: '\u27A1 오른쪽', up: '\u2B06 위로', down: '\u2B07 아래로' };
+    const autoFeedback = `컴포넌트 이동: ${info.selector} → ${dirLabels[direction]}`;
+    const popup = ce('div', 'qa-feedback-popup');
+
+    const r = el.getBoundingClientRect();
+    let posY = Math.min(r.bottom + 10, window.innerHeight - 300);
+    let posX = Math.min(r.left, window.innerWidth - 360);
+    if (posY < 10) posY = 10;
+    if (posX < 10) posX = 10;
+    popup.style.top = posY + 'px';
+    popup.style.left = posX + 'px';
+
+    popup.innerHTML = `
+      <div class="qa-feedback-popup-header">
+        <div style="margin-bottom:4px;"><span class="qa-feedback-type-label">\uD83D\uDCE6 컴포넌트 이동</span></div>
+        <div class="qa-fb-sel" style="margin-top:4px;">${autoFeedback}</div>
+      </div>
+      <div class="qa-feedback-popup-body">
+        <textarea placeholder="추가 메모 (선택사항)..." id="qaMoveMemo" autofocus></textarea>
+      </div>
+      <div class="qa-feedback-popup-footer">
+        <button class="qa-fb-cancel" id="qaMoveMemoCancel">취소</button>
+        <button class="qa-fb-save" id="qaMoveMemoSave">저장</button>
+      </div>
+    `;
+
+    document.body.appendChild(popup);
+    currentPopup = popup;
+    makePopupDraggable(popup);
+    setTimeout(() => qs('#qaMoveMemo', popup).focus(), 50);
+
+    qs('#qaMoveMemoCancel', popup).onclick = () => { popup.remove(); currentPopup = null; };
+    qs('#qaMoveMemoSave', popup).onclick = () => {
+      const memo = qs('#qaMoveMemo', popup).value.trim();
+      const fullFeedback = memo ? autoFeedback + ' — ' + memo : autoFeedback;
+
+      const entry = {
+        id: STATE.nextId++,
+        el: el,
+        selector: info.selector,
+        section: info.section,
+        tagName: info.tagName,
+        classes: info.classes,
+        textContent: info.textContent,
+        bbox: info.bbox,
+        styles: info.styles,
+        feedback: fullFeedback,
+        fbType: '\uC704\uCE58\uC774\uB3D9',
+        moveType: 'component',
+        moveDirection: direction,
+        moveTarget: null,
+      };
+
+      STATE.feedbacks.push(entry);
+      addMoveOverlay(el, entry.id);
+      updateCount();
+      saveFeedbacks();
+      popup.remove();
+      currentPopup = null;
+    };
+
+    qs('#qaMoveMemo', popup).addEventListener('keydown', e => {
+      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) qs('#qaMoveMemoSave', popup).click();
+    });
+  }
+
+  /* --- B. 자유 위치 이동 --- */
+  function enterFreeMoveMode(sourceEl, sourceInfo) {
+    STATE.moveMode = true;
+    STATE.moveSource = { el: sourceEl, info: sourceInfo };
+
+    addMoveSourceOverlay(sourceEl);
+
+    moveGuide = ce('div', 'qa-feedback-move-guide');
+    moveGuide.innerHTML = `
+      <span>\uD83D\uDCCD 목적지 요소를 클릭하세요 — 출발: <code>${truncate(sourceInfo.selector, 40)}</code> (${sourceInfo.tagName})</span>
+      <button class="qa-feedback-move-guide-cancel">취소</button>
+    `;
+    document.body.appendChild(moveGuide);
+
+    moveGuide.querySelector('.qa-feedback-move-guide-cancel').onclick = (e) => {
+      e.stopPropagation();
+      exitMoveMode();
+    };
+  }
+
+  function exitMoveMode() {
+    STATE.moveMode = false;
+    STATE.moveSource = null;
+    if (moveGuide) { moveGuide.remove(); moveGuide = null; }
+    document.querySelectorAll('.qa-feedback-move-source-overlay').forEach(e => e.remove());
+  }
+
+  function addMoveSourceOverlay(el) {
+    const rect = el.getBoundingClientRect();
+    const ov = ce('div', 'qa-feedback-move-source-overlay');
+    ov.style.left = (rect.left + window.scrollX) + 'px';
+    ov.style.top = (rect.top + window.scrollY) + 'px';
+    ov.style.width = rect.width + 'px';
+    ov.style.height = rect.height + 'px';
+    document.body.appendChild(ov);
+  }
+
+  function handleMoveDestination(destEl) {
+    if (!STATE.moveSource) return;
+    const destInfo = captureElement(destEl);
+    const sourceInfo = STATE.moveSource.info;
+    const sourceEl = STATE.moveSource.el;
+
+    addMoveSourceOverlay(destEl);
+    if (moveGuide) { moveGuide.remove(); moveGuide = null; }
+
+    showFreeMoveMemoPopup(sourceEl, sourceInfo, destInfo);
+  }
+
+  function showFreeMoveMemoPopup(sourceEl, sourceInfo, destInfo) {
+    if (currentPopup) currentPopup.remove();
+
+    const autoFeedback = `자유 이동: ${sourceInfo.selector} → ${destInfo.selector}`;
+    const popup = ce('div', 'qa-feedback-popup');
+
+    const r = sourceEl.getBoundingClientRect();
+    let posY = Math.min(r.bottom + 10, window.innerHeight - 300);
+    let posX = Math.min(r.left, window.innerWidth - 360);
+    if (posY < 10) posY = 10;
+    if (posX < 10) posX = 10;
+    popup.style.top = posY + 'px';
+    popup.style.left = posX + 'px';
+
+    popup.innerHTML = `
+      <div class="qa-feedback-popup-header">
+        <div style="margin-bottom:4px;"><span class="qa-feedback-type-label">\uD83D\uDD00 자유 위치 이동</span></div>
+        <div style="font-size:12px;color:#64748b;margin-top:4px;">출발: <code>${truncate(sourceInfo.selector, 30)}</code></div>
+        <div style="font-size:12px;color:#64748b;margin-top:2px;">목적지: <code>${truncate(destInfo.selector, 30)}</code></div>
+      </div>
+      <div class="qa-feedback-popup-body">
+        <textarea placeholder="이동 방법을 자유롭게 설명하세요..." id="qaMoveMemo" autofocus></textarea>
+      </div>
+      <div class="qa-feedback-popup-footer">
+        <button class="qa-fb-cancel" id="qaMoveMemoCancel">취소</button>
+        <button class="qa-fb-save" id="qaMoveMemoSave">저장</button>
+      </div>
+    `;
+
+    document.body.appendChild(popup);
+    currentPopup = popup;
+    makePopupDraggable(popup);
+    setTimeout(() => qs('#qaMoveMemo', popup).focus(), 50);
+
+    qs('#qaMoveMemoCancel', popup).onclick = () => {
+      popup.remove();
+      currentPopup = null;
+      exitMoveMode();
+    };
+
+    qs('#qaMoveMemoSave', popup).onclick = () => {
+      const memo = qs('#qaMoveMemo', popup).value.trim();
+      const fullFeedback = memo ? autoFeedback + ' — ' + memo : autoFeedback;
+
+      const entry = {
+        id: STATE.nextId++,
+        el: sourceEl,
+        selector: sourceInfo.selector,
+        section: sourceInfo.section,
+        tagName: sourceInfo.tagName,
+        classes: sourceInfo.classes,
+        textContent: sourceInfo.textContent,
+        bbox: sourceInfo.bbox,
+        styles: sourceInfo.styles,
+        feedback: fullFeedback,
+        fbType: '\uC704\uCE58\uC774\uB3D9',
+        moveType: 'free',
+        moveDirection: null,
+        moveTarget: {
+          selector: destInfo.selector,
+          tagName: destInfo.tagName,
+        },
+      };
+
+      STATE.feedbacks.push(entry);
+      addMoveOverlay(sourceEl, entry.id);
+      updateCount();
+      saveFeedbacks();
+      popup.remove();
+      currentPopup = null;
+      exitMoveMode();
+    };
+
+    qs('#qaMoveMemo', popup).addEventListener('keydown', e => {
+      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) qs('#qaMoveMemoSave', popup).click();
+    });
+  }
+
+  /* 이동 피드백 오버레이 — 보라색 */
+  function addMoveOverlay(el, id) {
+    const rect = el.getBoundingClientRect();
+    const ov = ce('div', 'qa-feedback-selected-overlay qa-feedback-move-overlay');
+    ov.style.left = (rect.left + window.scrollX) + 'px';
+    ov.style.top = (rect.top + window.scrollY) + 'px';
+    ov.style.width = rect.width + 'px';
+    ov.style.height = rect.height + 'px';
+    ov.dataset.qaId = id;
+
+    const fb = STATE.feedbacks.find(f => f.id === id);
+    const dirIcons = { left: '\u2B05', right: '\u27A1', up: '\u2B06', down: '\u2B07' };
+    const badgeContent = (fb && fb.moveType === 'component' && fb.moveDirection) ? dirIcons[fb.moveDirection] || id : id;
+    const badge = ce('div', 'qa-feedback-number-badge qa-feedback-move-badge', badgeContent);
+    badge.onclick = (e) => { e.stopPropagation(); e.preventDefault(); showEditPopup(id, ov); };
+    ov.appendChild(badge);
+    document.body.appendChild(ov);
+
+    // 자유 이동: 목적지 요소도 하이라이트
+    if (fb && fb.moveType === 'free' && fb.moveTarget && fb.moveTarget.selector) {
+      const destEl = document.querySelector(fb.moveTarget.selector);
+      if (destEl) {
+        const dr = destEl.getBoundingClientRect();
+        const dov = ce('div', 'qa-feedback-selected-overlay qa-feedback-move-dest-overlay');
+        dov.style.left = (dr.left + window.scrollX) + 'px';
+        dov.style.top = (dr.top + window.scrollY) + 'px';
+        dov.style.width = dr.width + 'px';
+        dov.style.height = dr.height + 'px';
+        dov.dataset.qaId = id;
+        document.body.appendChild(dov);
+      }
+    }
+  }
+
+  /* ===== Overlays & Badges ===== */
+  function addOverlay(el, id) {
+    const rect = el.getBoundingClientRect();
+    const ov = ce('div', 'qa-feedback-selected-overlay');
+    ov.style.left = (rect.left + window.scrollX) + 'px';
+    ov.style.top = (rect.top + window.scrollY) + 'px';
+    ov.style.width = rect.width + 'px';
+    ov.style.height = rect.height + 'px';
+    ov.dataset.qaId = id;
+
+    const badge = ce('div', 'qa-feedback-number-badge', id);
+    badge.onclick = (e) => { e.stopPropagation(); e.preventDefault(); showEditPopup(id, ov); };
+    ov.appendChild(badge);
+    document.body.appendChild(ov);
+  }
+
+
+  function showEditPopup(id, overlayEl) {
+    const entry = STATE.feedbacks.find(f => f.id === id);
+    if (!entry) return;
+    if (currentPopup) currentPopup.remove();
+
+    const rect = overlayEl.getBoundingClientRect();
+    const popup = ce('div', 'qa-feedback-popup');
+    popup.style.top = Math.min(rect.bottom + 10, window.innerHeight - 250) + 'px';
+    popup.style.left = Math.min(rect.left, window.innerWidth - 360) + 'px';
+
+    const curType = entry.fbType || 'UI';
+    popup.innerHTML = `
+      <div class="qa-feedback-popup-header">
+        <div class="qa-fb-sel">${entry.selector || ''}</div>
+        <div class="qa-fb-loc">${entry.section || ''}</div>
+      </div>
+      <div class="qa-feedback-type-tabs" id="qaEditTypeTabs">
+        <button class="qa-feedback-type-tab${curType==='UI'?' active':''}" data-type="UI">\uD83C\uDFA8 UI</button>
+        <button class="qa-feedback-type-tab${curType==='\uAE30\uB2A5'?' active':''}" data-type="\uAE30\uB2A5">\u2699\uFE0F 기능</button>
+        <button class="qa-feedback-type-tab${curType==='\uD14D\uC2A4\uD2B8'?' active':''}" data-type="\uD14D\uC2A4\uD2B8">\uD83D\uDCDD 텍스트</button>
+      </div>
+      <div class="qa-feedback-popup-body">
+        <textarea id="qaFeedbackInput">${entry.feedback}</textarea>
+      </div>
+      <div class="qa-feedback-popup-footer">
+        <button class="qa-fb-delete" id="qaPopupDelete">삭제</button>
+        <button class="qa-fb-cancel" id="qaPopupCancel">취소</button>
+        <button class="qa-fb-save" id="qaPopupSave">저장</button>
+      </div>
+    `;
+    document.body.appendChild(popup);
+    currentPopup = popup;
+    makePopupDraggable(popup);
+
+    let editType = curType;
+    qs('#qaEditTypeTabs', popup).querySelectorAll('.qa-feedback-type-tab').forEach(btn => {
+      btn.onclick = () => {
+        qs('#qaEditTypeTabs', popup).querySelectorAll('.qa-feedback-type-tab').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        editType = btn.dataset.type;
+      };
+    });
+
+    qs('#qaPopupCancel', popup).onclick = () => { popup.remove(); currentPopup = null; };
+    qs('#qaPopupSave', popup).onclick = () => {
+      entry.feedback = qs('#qaFeedbackInput', popup).value.trim();
+      entry.fbType = editType;
+      saveFeedbacks();
+      popup.remove(); currentPopup = null;
+    };
+    qs('#qaPopupDelete', popup).onclick = () => {
+      STATE.feedbacks = STATE.feedbacks.filter(f => f.id !== id);
+      document.querySelectorAll(`[data-qa-id="${id}"]`).forEach(e => e.remove());
+      updateCount();
+      saveFeedbacks();
+      popup.remove(); currentPopup = null;
+    };
+  }
+
+  /* ===== Markdown Output ===== */
+  function generateMarkdown(level) {
+    const now = new Date();
+    const dateStr = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0') + '-' + String(now.getDate()).padStart(2,'0') + ' ' + String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0');
+    const page = location.pathname.split('/').pop() || 'index.html';
+
+    let md = `# QA \uD53C\uB4DC\uBC31 \u2014 ${page}\n> \uAC80\uC218\uC77C: ${dateStr}\n> \uCD1D \uD53C\uB4DC\uBC31: ${STATE.feedbacks.length}\uAC74\n> \uC0C1\uC138\uB3C4: ${level}\n\n---\n\n`;
+
+    STATE.feedbacks.forEach((fb, i) => {
+      const num = i + 1;
+      const sectionLabel = fb.section ? ` \u2014 ${fb.section}` : '';
+      const tag = fb.tagName || '\uC601\uC5ED';
+      const typeTag = fb.fbType ? `[${fb.fbType}] ` : '';
+      md += `## ${circled(num)} ${typeTag}${tag}${sectionLabel}\n`;
+
+      if (fb.selector) md += `- **\uC694\uC18C**: \`${fb.selector}\`\n`;
+
+      if (fb.fbType === '\uC704\uCE58\uC774\uB3D9') {
+        const memo = fb.feedback.includes(' — ') ? fb.feedback.split(' — ').slice(1).join(' — ') : '';
+        if (fb.moveType === 'component') {
+          const dirLabels = { left: '\u2B05 왼쪽', right: '\u27A1 오른쪽', up: '\u2B06 위로', down: '\u2B07 아래로' };
+          md += `- **\uC774\uB3D9 \uBC29\uC2DD**: 컴포넌트 이동\n`;
+          md += `- **\uBC29\uD5A5**: ${dirLabels[fb.moveDirection] || fb.moveDirection}\n`;
+        } else if (fb.moveType === 'free' && fb.moveTarget) {
+          md += `- **\uC774\uB3D9 \uBC29\uC2DD**: 자유 위치 이동\n`;
+          md += `- **\uC774\uB3D9 \uBAA9\uC801\uC9C0**: \`${fb.moveTarget.selector}\`\n`;
+        }
+        if (memo) md += `- **\uBA54\uBAA8**: ${memo}\n`;
+      } else {
+        if (level !== 'compact') {
+          if (fb.textContent) md += `- **\uD604\uC7AC \uD14D\uC2A4\uD2B8**: "${truncate(fb.textContent, 80)}"\n`;
+        }
+        md += `- **\uD53C\uB4DC\uBC31**: ${fb.feedback}\n`;
+      }
+
+      if (level === 'detailed' || level === 'forensic') {
+        if (fb.bbox) md += `- **\uC704\uCE58**: x:${fb.bbox.x} y:${fb.bbox.y} ${fb.bbox.w}x${fb.bbox.h}\n`;
+        if (fb.multiEls && fb.multiEls.length > 0) {
+          md += `- **\uCD94\uAC00 \uC120\uD0DD \uC694\uC18C**: ${fb.multiEls.map(e => '`' + e.selector + '`').join(', ')}\n`;
+        }
+      }
+
+      if (level === 'forensic' && fb.styles) {
+        md += `- **\uACC4\uC0B0\uB41C \uC2A4\uD0C0\uC77C**:\n`;
+        Object.entries(fb.styles).forEach(([k, v]) => {
+          if (v && v !== 'normal' && v !== 'none' && v !== '0px' && v !== 'rgba(0, 0, 0, 0)' && v !== 'static') {
+            md += `  - ${k}: \`${v}\`\n`;
+          }
+        });
+      }
+
+      md += '\n';
+    });
+
+    md += `---\n> \uC774 \uD53C\uB4DC\uBC31\uC744 \uD074\uB85C\uB4DC \uCF54\uB4DC\uC5D0 \uBD99\uC5EC\uB123\uC5B4 \uC218\uC815\uC744 \uC694\uCCAD\uD558\uC138\uC694.\n`;
+    return md;
+  }
+
+  function generateDevRequest() {
+    const now = new Date();
+    const dateStr = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0') + '-' + String(now.getDate()).padStart(2,'0');
+    const page = location.pathname.split('/').pop() || 'index.html';
+
+    let md = `# DEV-REQUEST \u2014 ${page}\n> \uC694\uCCAD\uC77C: ${dateStr}\n> \uCD1D \uD53C\uB4DC\uBC31: ${STATE.feedbacks.length}\uAC74\n\n---\n\n`;
+
+    STATE.feedbacks.forEach((fb, i) => {
+      const num = i + 1;
+      const typeTag = fb.fbType || 'UI';
+      const summary = fb.feedback.length > 30 ? fb.feedback.substring(0, 30) + '...' : fb.feedback;
+      const categoryMap = { 'UI': '\uC2A4\uD0C0\uC77C/\uB808\uC774\uC544\uC6C3', '\uAE30\uB2A5': '\uB3D9\uC791/\uB85C\uC9C1', '\uD14D\uC2A4\uD2B8': '\uBB38\uAD6C', '\uC704\uCE58\uC774\uB3D9': '\uC704\uCE58 \uC774\uB3D9' };
+      const category = categoryMap[typeTag] || typeTag;
+
+      md += `### BUG-${String(num).padStart(3,'0')}: [${typeTag}] ${summary}\n`;
+      md += `- **\uC0C1\uD0DC**: \uD83D\uDCCB \uC694\uCCAD\n`;
+      md += `- **\uC694\uCCAD\uC77C**: ${dateStr}\n`;
+      md += `- **\uCE74\uD14C\uACE0\uB9AC**: ${category}\n`;
+      md += `- **\uC11C\uBE44\uC2A4 \uBCF8\uC9C8 \uC5F0\uACB0**: (\uC218\uB3D9 \uC785\uB825)\n`;
+
+      if (fb.selector) {
+        md += `- **\uC218\uC815 \uC704\uCE58**: \`${fb.selector}\`\n`;
+      }
+
+      if (fb.textContent) {
+        md += `- **\uD604\uC7AC \uC0C1\uD0DC**: "${fb.textContent.length > 60 ? fb.textContent.substring(0, 60) + '...' : fb.textContent}"\n`;
+      }
+
+      md += `- **\uC218\uC815 \uB0B4\uC6A9**: ${fb.feedback}\n`;
+      md += `- **\uD14C\uC2A4\uD2B8 \uBC29\uBC95**: \uD574\uB2F9 \uC694\uC18C \uD655\uC778\n`;
+      md += '\n---\n\n';
+    });
+
+    return md;
+  }
+
+  function circled(n) {
+    const chars = '\u2460\u2461\u2462\u2463\u2464\u2465\u2466\u2467\u2468\u2469\u246A\u246B\u246C\u246D\u246E\u246F\u2470\u2471\u2472\u2473';
+    return n <= 20 ? chars[n - 1] : '(' + n + ')';
+  }
+
+  function showOutput() {
+    if (STATE.feedbacks.length === 0) {
+      alert('\uD53C\uB4DC\uBC31\uC774 \uC5C6\uC2B5\uB2C8\uB2E4. \uC694\uC18C\uB97C \uC120\uD0DD\uD558\uACE0 \uD53C\uB4DC\uBC31\uC744 \uC785\uB825\uD574\uC8FC\uC138\uC694.');
+      return;
+    }
+
+    const overlay = ce('div', 'qa-feedback-output-overlay');
+    const md = generateMarkdown(STATE.detailLevel);
+
+    let currentOutputTab = 'markdown';
+
+    overlay.innerHTML = `
+      <div class="qa-feedback-output-modal">
+        <div class="qa-feedback-output-modal-header">
+          <h3>\uCD9C\uB825 (${STATE.feedbacks.length}\uAC74)</h3>
+          <button onclick="this.closest('.qa-feedback-output-overlay').remove()" style="background:none;border:none;font-size:18px;cursor:pointer;color:#94a3b8;">\u2715</button>
+        </div>
+        <div class="qa-feedback-output-tabs" id="qaOutputTabs" style="display:flex;gap:0;margin:0 16px;border-bottom:2px solid #e2e8f0;">
+          <button data-tab="markdown" style="flex:1;padding:8px 0;font-size:13px;font-weight:600;border:none;background:none;cursor:pointer;border-bottom:2px solid #1e293b;margin-bottom:-2px;color:#1e293b;">\uB9C8\uD06C\uB2E4\uC6B4</button>
+          <button data-tab="devrequest" style="flex:1;padding:8px 0;font-size:13px;font-weight:500;border:none;background:none;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;color:#94a3b8;">DEV-REQUEST</button>
+        </div>
+        <div class="qa-feedback-output-levels" id="qaOutputLevels">
+          <button data-level="compact">Compact</button>
+          <button data-level="standard">Standard</button>
+          <button data-level="detailed">Detailed</button>
+          <button data-level="forensic">Forensic</button>
+        </div>
+        <div class="qa-feedback-output-pre">
+          <pre id="qaOutputPre"></pre>
+        </div>
+        <div class="qa-feedback-output-actions">
+          <button style="background:#f1f5f9;color:#475569;" onclick="this.closest('.qa-feedback-output-overlay').remove()">\uB2EB\uAE30</button>
+          <button style="background:#1e293b;color:#fff;" id="qaCopyBtn">\uD074\uB9BD\uBCF4\uB4DC \uBCF5\uC0AC</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(overlay);
+
+    const pre = qs('#qaOutputPre', overlay);
+    const levelsContainer = qs('#qaOutputLevels', overlay);
+    pre.textContent = md;
+
+    function updateOutputContent() {
+      if (currentOutputTab === 'markdown') {
+        pre.textContent = generateMarkdown(STATE.detailLevel);
+      } else {
+        pre.textContent = generateDevRequest();
+      }
+    }
+
+    function updateTabStyles() {
+      qs('#qaOutputTabs', overlay).querySelectorAll('button').forEach(btn => {
+        const isActive = btn.dataset.tab === currentOutputTab;
+        btn.style.borderBottomColor = isActive ? '#1e293b' : 'transparent';
+        btn.style.color = isActive ? '#1e293b' : '#94a3b8';
+        btn.style.fontWeight = isActive ? '600' : '500';
+      });
+      levelsContainer.style.display = currentOutputTab === 'markdown' ? '' : 'none';
+    }
+
+    // 탭 전환
+    qs('#qaOutputTabs', overlay).querySelectorAll('button').forEach(btn => {
+      btn.onclick = () => {
+        currentOutputTab = btn.dataset.tab;
+        updateTabStyles();
+        updateOutputContent();
+      };
+    });
+
+    // 상세도 레벨 (마크다운 탭에서만)
+    levelsContainer.querySelectorAll('button').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.level === STATE.detailLevel);
+      btn.onclick = () => {
+        STATE.detailLevel = btn.dataset.level;
+        levelsContainer.querySelectorAll('button').forEach(b => b.classList.toggle('active', b === btn));
+        updateOutputContent();
+      };
+    });
+
+    qs('#qaCopyBtn', overlay).onclick = () => {
+      const text = pre.textContent;
+      navigator.clipboard.writeText(text).then(() => {
+        qs('#qaCopyBtn', overlay).textContent = '\uBCF5\uC0AC \uC644\uB8CC!';
+        setTimeout(() => { qs('#qaCopyBtn', overlay).textContent = '\uD074\uB9BD\uBCF4\uB4DC \uBCF5\uC0AC'; }, 1500);
+      });
+    };
+
+    overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+  }
+
+  /* ===== Reset ===== */
+  async function resetAll() {
+    if (!confirm('\uBAA8\uB4E0 \uD53C\uB4DC\uBC31\uC744 \uCD08\uAE30\uD654\uD558\uC2DC\uACA0\uC2B5\uB2C8\uAE4C?')) return;
+    STATE.feedbacks = [];
+    STATE.nextId = 1;
+    await chrome.storage.local.remove(STORAGE_KEY);
+    document.querySelectorAll('.qa-feedback-selected-overlay, .qa-feedback-number-badge').forEach(e => e.remove());
+    if (currentPopup) { currentPopup.remove(); currentPopup = null; }
+    document.querySelectorAll('.qa-feedback-output-overlay').forEach(e => e.remove());
+    hoverOverlay.style.display = 'none';
+    updateCount();
+  }
+
+  /* ===== Session Manager ===== */
+  async function saveSession() {
+    if (STATE.feedbacks.length === 0) {
+      alert('\uC800\uC7A5\uD560 \uD53C\uB4DC\uBC31\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.');
+      return;
+    }
+    showSessionNamePopup();
+  }
+
+  function showSessionNamePopup() {
+    const overlay = ce('div', 'qa-settings-overlay');
+    const pageName = location.pathname.split('/').pop() || 'index.html';
+    const today = new Date().toISOString().slice(0, 10);
+    const defaultName = pageName + ' \u2014 ' + today;
+
+    overlay.innerHTML = `
+      <div class="qa-settings-modal" style="width:340px;">
+        <div class="qa-settings-modal-header">
+          <h3>\uD83D\uDCBE \uC138\uC158 \uC800\uC7A5</h3>
+        </div>
+        <div class="qa-settings-modal-body">
+          <div style="margin-bottom:12px;font-size:13px;color:#94a3b8;">\uD53C\uB4DC\uBC31 ${STATE.feedbacks.length}\uAC74\uC744 \uC138\uC158\uC73C\uB85C \uC800\uC7A5\uD569\uB2C8\uB2E4.</div>
+          <input type="text" id="qaSessionNameInput" value="${defaultName}" style="width:100%;padding:10px;border:1px solid #475569;border-radius:8px;background:#0f172a;color:#e2e8f0;font-size:13px;outline:none;" />
+        </div>
+        <div class="qa-settings-modal-footer">
+          <button class="qa-settings-btn-close" id="qaSessionNameCancel">\uCDE8\uC18C</button>
+          <button class="qa-settings-btn-save" id="qaSessionNameSave">\uC800\uC7A5</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+
+    const input = qs('#qaSessionNameInput', overlay);
+    input.focus();
+    input.select();
+
+    qs('#qaSessionNameCancel', overlay).onclick = () => overlay.remove();
+    qs('#qaSessionNameSave', overlay).onclick = async () => {
+      const name = input.value.trim() || defaultName;
+      const data = await getSessionsData();
+      const feedbacksCopy = STATE.feedbacks.map(fb => ({ ...fb, el: null }));
+      data.sessions.push({
+        id: 'session-' + Date.now(),
+        name: name,
+        page: location.pathname,
+        url: location.href,
+        createdAt: new Date().toISOString(),
+        status: 'open',
+        feedbacks: feedbacksCopy,
+        nextId: STATE.nextId
+      });
+      await saveSessionsData(data);
+      overlay.remove();
+      showToast('\uC138\uC158\uC774 \uC800\uC7A5\uB418\uC5C8\uC2B5\uB2C8\uB2E4.');
+    };
+
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Enter') qs('#qaSessionNameSave', overlay).click();
+      if (e.key === 'Escape') overlay.remove();
+    });
+
+    setTimeout(() => {
+      overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+    }, 100);
+  }
+
+  function showToast(msg) {
+    const toast = ce('div', 'qa-feedback-toast', msg);
+    document.body.appendChild(toast);
+    setTimeout(() => { toast.style.opacity = '0'; toast.style.transition = 'opacity 0.3s'; }, 1500);
+    setTimeout(() => toast.remove(), 1800);
+  }
+
+  async function loadSessionList() {
+    const data = await getSessionsData();
+    const removed = await cleanOldSessions(data);
+    if (removed.length > 0) {
+      showToast(removed.length + '\uAC1C\uC758 \uC624\uB798\uB41C \uC138\uC158(30\uC77C+)\uC774 \uC790\uB3D9 \uC0AD\uC81C\uB418\uC5C8\uC2B5\uB2C8\uB2E4.');
+    }
+
+    if (data.sessions.length === 0) {
+      alert('\uC800\uC7A5\uB41C \uC138\uC158\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.');
+      return;
+    }
+    showSessionListPopup(data);
+  }
+
+  function showSessionListPopup(data) {
+    const overlay = ce('div', 'qa-settings-overlay');
+    overlay.innerHTML = `
+      <div class="qa-settings-modal" style="width:400px;max-height:80vh;display:flex;flex-direction:column;">
+        <div class="qa-settings-modal-header">
+          <h3>\uD83D\uDCC2 \uC800\uC7A5\uB41C \uC138\uC158</h3>
+        </div>
+        <div class="qa-settings-modal-body" id="qaSessionListBody" style="overflow-y:auto;flex:1;"></div>
+        <div class="qa-settings-modal-footer">
+          <button class="qa-settings-btn-close" id="qaSessionListClose">\uB2EB\uAE30</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+
+    async function renderList() {
+      const freshData = await getSessionsData();
+      const body = qs('#qaSessionListBody', overlay);
+      if (freshData.sessions.length === 0) {
+        body.innerHTML = '<div style="text-align:center;color:#64748b;padding:20px;">\uC800\uC7A5\uB41C \uC138\uC158\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.</div>';
+        return;
+      }
+      body.innerHTML = freshData.sessions.map((s, i) => {
+        const date = s.createdAt ? s.createdAt.slice(0, 10) : '';
+        const count = s.feedbacks ? s.feedbacks.length : 0;
+        const statusColors = { open: '#22c55e', reviewing: '#f59e0b', closed: '#64748b' };
+        const statusColor = statusColors[s.status] || '#64748b';
+        return `
+          <div style="padding:12px 0;border-bottom:1px solid #334155;">
+            <div style="font-size:14px;font-weight:600;color:#e2e8f0;margin-bottom:4px;">\u25B8 ${s.name}</div>
+            <div style="font-size:12px;color:#64748b;margin-bottom:8px;">
+              ${count}\uAC74 \u00B7 ${date} \u00B7 <span style="color:${statusColor}">${s.status}</span>
+            </div>
+            <div style="display:flex;gap:6px;">
+              <button class="qa-settings-change qa-session-load" data-idx="${i}" style="border-color:#3b82f6;color:#3b82f6;">\uBD88\uB7EC\uC624\uAE30</button>
+              <button class="qa-settings-change qa-session-review" data-idx="${i}" style="border-color:#f59e0b;color:#f59e0b;">\uC7AC\uAC80\uC218</button>
+              <button class="qa-settings-change qa-session-delete" data-idx="${i}" style="border-color:#ef4444;color:#ef4444;">\uC0AD\uC81C</button>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      body.querySelectorAll('.qa-session-load').forEach(btn => {
+        btn.onclick = async () => {
+          const idx = parseInt(btn.dataset.idx);
+          const d = await getSessionsData();
+          const session = d.sessions[idx];
+          if (!session) return;
+          restoreSessionFeedbacks(session);
+          overlay.remove();
+          showToast('\uC138\uC158 "\u200B' + session.name + '"\uC744 \uBD88\uB7EC\uC654\uC2B5\uB2C8\uB2E4.');
+        };
+      });
+
+      body.querySelectorAll('.qa-session-review').forEach(btn => {
+        btn.onclick = () => {
+          const idx = parseInt(btn.dataset.idx);
+          enterReviewMode(idx);
+          overlay.remove();
+        };
+      });
+
+      body.querySelectorAll('.qa-session-delete').forEach(btn => {
+        btn.onclick = async () => {
+          const idx = parseInt(btn.dataset.idx);
+          const d = await getSessionsData();
+          const session = d.sessions[idx];
+          if (!session) return;
+          if (!confirm('"' + session.name + '" \uC138\uC158\uC744 \uC0AD\uC81C\uD558\uC2DC\uACA0\uC2B5\uB2C8\uAE4C?')) return;
+          d.sessions.splice(idx, 1);
+          await saveSessionsData(d);
+          renderList();
+        };
+      });
+    }
+
+    renderList();
+
+    qs('#qaSessionListClose', overlay).onclick = () => overlay.remove();
+    setTimeout(() => {
+      overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+    }, 100);
+  }
+
+  /* ===== Review Mode ===== */
+  async function enterReviewMode(sessionIdx) {
+    const data = await getSessionsData();
+    const session = data.sessions[sessionIdx];
+    if (!session) return;
+
+    if (STATE.feedbacks.length > 0) {
+      STATE.savedFeedbacksBeforeReview = {
+        feedbacks: STATE.feedbacks.map(fb => ({ ...fb, el: null })),
+        nextId: STATE.nextId
+      };
+    }
+
+    document.querySelectorAll('.qa-feedback-selected-overlay, .qa-feedback-review-overlay').forEach(e => e.remove());
+    if (currentPopup) { currentPopup.remove(); currentPopup = null; }
+
+    session.status = 'reviewing';
+    if (!session.reviewCount) session.reviewCount = 0;
+    session.reviewCount++;
+    data.sessions[sessionIdx] = session;
+    await saveSessionsData(data);
+
+    STATE.reviewMode = true;
+    STATE.reviewSessionId = session.id;
+    STATE.feedbacks = session.feedbacks || [];
+    STATE.nextId = session.nextId || STATE.feedbacks.length + 1;
+
+    STATE.feedbacks.forEach(fb => {
+      if (!fb.reviewStatus) fb.reviewStatus = null;
+      if (!fb.reviewNote) fb.reviewNote = '';
+    });
+
+    STATE.feedbacks.forEach((fb, i) => {
+      if (fb.selector) {
+        const el = document.querySelector(fb.selector);
+        if (el) {
+          fb.el = el;
+          addReviewOverlay(el, fb, i);
+        } else {
+          addReviewOverlayNotFound(fb, i);
+        }
+      }
+    });
+
+    updateCount();
+    updateReviewPanel();
+  }
+
+  function addReviewOverlay(el, fb, idx) {
+    const rect = el.getBoundingClientRect();
+    const ov = ce('div', 'qa-feedback-review-overlay');
+    ov.style.left = (rect.left + window.scrollX) + 'px';
+    ov.style.top = (rect.top + window.scrollY) + 'px';
+    ov.style.width = rect.width + 'px';
+    ov.style.height = rect.height + 'px';
+    ov.dataset.qaReviewIdx = idx;
+
+    const badge = ce('div', 'qa-feedback-review-badge', (idx + 1));
+    updateBadgeStatus(badge, fb.reviewStatus);
+    badge.onclick = (e) => { e.stopPropagation(); e.preventDefault(); showReviewPopup(fb, idx, ov); };
+    ov.appendChild(badge);
+    document.body.appendChild(ov);
+  }
+
+  function addReviewOverlayNotFound(fb, idx) {
+    const bbox = fb.bbox || { x: 100, y: 100 + idx * 40, w: 100, h: 30 };
+    const ov = ce('div', 'qa-feedback-review-overlay not-found');
+    ov.style.left = (bbox.x + window.scrollX) + 'px';
+    ov.style.top = (bbox.y + window.scrollY) + 'px';
+    ov.style.width = bbox.w + 'px';
+    ov.style.height = bbox.h + 'px';
+    ov.dataset.qaReviewIdx = idx;
+
+    const badge = ce('div', 'qa-feedback-review-badge not-found', (idx + 1));
+    badge.onclick = (e) => { e.stopPropagation(); e.preventDefault(); showReviewPopup(fb, idx, ov); };
+    ov.appendChild(badge);
+    document.body.appendChild(ov);
+  }
+
+  function updateBadgeStatus(badge, status) {
+    badge.classList.remove('fixed', 'not-fixed', 'not-found');
+    if (status === 'fixed') badge.classList.add('fixed');
+    else if (status === 'not-fixed') badge.classList.add('not-fixed');
+  }
+
+  function showReviewPopup(fb, idx, overlayEl) {
+    if (currentPopup) currentPopup.remove();
+
+    const rect = overlayEl.getBoundingClientRect();
+    const popup = ce('div', 'qa-feedback-review-popup');
+    const posY = Math.min(rect.bottom + 10, window.innerHeight - 320);
+    const posX = Math.min(rect.left, window.innerWidth - 340);
+    popup.style.top = Math.max(10, posY) + 'px';
+    popup.style.left = Math.max(10, posX) + 'px';
+
+    const typeTag = fb.fbType ? `[${fb.fbType}] ` : '';
+    const tag = fb.tagName || '\uC601\uC5ED';
+    const sectionLabel = fb.section ? ' \u2014 ' + fb.section : '';
+    const notFoundMsg = (!fb.selector || document.querySelector(fb.selector)) ? '' : '<div style="color:#f59e0b;font-size:11px;margin-top:4px;">\u26A0\uFE0F \uC694\uC18C\uB97C \uCC3E\uC744 \uC218 \uC5C6\uC74C</div>';
+
+    const curStatus = fb.reviewStatus || '';
+    popup.innerHTML = `
+      <div class="qa-feedback-review-popup-header">
+        <div style="font-size:14px;font-weight:600;">${circled(idx + 1)} ${typeTag}${tag}${sectionLabel}</div>
+        <div style="font-size:12px;color:#64748b;margin-top:4px;">\uC6D0\uBCF8 \uD53C\uB4DC\uBC31: "${truncate(fb.feedback, 60)}"</div>
+        ${notFoundMsg}
+      </div>
+      <div class="qa-feedback-review-popup-body">
+        <div class="qa-review-radio-group">
+          <label class="qa-review-radio${curStatus === 'fixed' ? ' selected' : ''}">
+            <input type="radio" name="qaReviewStatus" value="fixed" ${curStatus === 'fixed' ? 'checked' : ''} />
+            \u2705 \uC218\uC815\uB428
+          </label>
+          <label class="qa-review-radio${curStatus === 'not-fixed' ? ' selected' : ''}">
+            <input type="radio" name="qaReviewStatus" value="not-fixed" ${curStatus === 'not-fixed' ? 'checked' : ''} />
+            \u274C \uBBF8\uC218\uC815
+          </label>
+        </div>
+        <div style="margin-top:10px;">
+          <div style="font-size:12px;color:#64748b;margin-bottom:4px;">\uBA54\uBAA8:</div>
+          <textarea id="qaReviewNote" style="width:100%;min-height:50px;border:1px solid #e2e8f0;border-radius:8px;padding:8px;font-size:13px;font-family:inherit;resize:vertical;outline:none;">${fb.reviewNote || ''}</textarea>
+        </div>
+        <div style="display:flex;justify-content:flex-end;margin-top:10px;">
+          <button id="qaReviewConfirm" style="padding:7px 16px;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;border:none;background:#2563eb;color:#fff;">\uD655\uC778</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(popup);
+    currentPopup = popup;
+    makePopupDraggable(popup);
+
+    popup.querySelectorAll('.qa-review-radio').forEach(label => {
+      label.onclick = () => {
+        popup.querySelectorAll('.qa-review-radio').forEach(l => l.classList.remove('selected'));
+        label.classList.add('selected');
+        label.querySelector('input').checked = true;
+      };
+    });
+
+    qs('#qaReviewConfirm', popup).onclick = () => {
+      const checked = popup.querySelector('input[name="qaReviewStatus"]:checked');
+      fb.reviewStatus = checked ? checked.value : null;
+      fb.reviewNote = qs('#qaReviewNote', popup).value.trim();
+
+      const badge = overlayEl.querySelector('.qa-feedback-review-badge');
+      if (badge) updateBadgeStatus(badge, fb.reviewStatus);
+
+      saveReviewState();
+
+      popup.remove();
+      currentPopup = null;
+    };
+  }
+
+  async function saveReviewState() {
+    if (!STATE.reviewSessionId) return;
+    const data = await getSessionsData();
+    const session = data.sessions.find(s => s.id === STATE.reviewSessionId);
+    if (!session) return;
+    session.feedbacks = STATE.feedbacks.map(fb => ({ ...fb, el: null }));
+    session.nextId = STATE.nextId;
+    await saveSessionsData(data);
+  }
+
+  function updateReviewPanel() {
+    ['#qaReviewCancel', '#qaReviewComplete', '#qaReviewSep'].forEach(id => {
+      const el = qs(id);
+      if (el) el.remove();
+    });
+
+    if (STATE.reviewMode) {
+      const body = qs('#qaPanelBody');
+      const settingsBtn = qs('#qaSettingsToggle');
+      const sep = ce('div', 'qa-feedback-sep');
+      sep.id = 'qaReviewSep';
+
+      const cancelBtn = ce('button', 'qa-feedback-btn');
+      cancelBtn.id = 'qaReviewCancel';
+      cancelBtn.style.color = '#94a3b8';
+      cancelBtn.innerHTML = '<span class="qa-fb-icon">\u274C</span> \uC7AC\uAC80\uC218 \uCDE8\uC18C';
+      cancelBtn.onclick = cancelReview;
+
+      const completeBtn = ce('button', 'qa-feedback-btn review-complete');
+      completeBtn.id = 'qaReviewComplete';
+      completeBtn.innerHTML = '<span class="qa-fb-icon">\uD83D\uDCCB</span> \uC7AC\uAC80\uC218 \uC644\uB8CC';
+      completeBtn.onclick = completeReview;
+
+      body.insertBefore(sep, settingsBtn.previousElementSibling);
+      body.insertBefore(cancelBtn, sep.nextSibling);
+      body.insertBefore(completeBtn, cancelBtn.nextSibling);
+    }
+  }
+
+  async function completeReview() {
+    const md = await generateReviewMarkdown();
+    const devReq = generateNotFixedDevRequest();
+    let currentReviewTab = 'report';
+
+    const overlay = ce('div', 'qa-feedback-output-overlay');
+    overlay.innerHTML = `
+      <div class="qa-feedback-output-modal">
+        <div class="qa-feedback-output-modal-header">
+          <h3>\uC7AC\uAC80\uC218 \uB9AC\uD3EC\uD2B8</h3>
+          <button onclick="this.closest('.qa-feedback-output-overlay').remove()" style="background:none;border:none;font-size:18px;cursor:pointer;color:#94a3b8;">\u2715</button>
+        </div>
+        <div class="qa-feedback-review-tabs" id="qaReviewTabs" style="display:flex;gap:0;margin:0 16px;border-bottom:2px solid #e2e8f0;">
+          <button data-tab="report" style="flex:1;padding:8px 0;font-size:13px;font-weight:600;border:none;background:none;cursor:pointer;border-bottom:2px solid #1e293b;margin-bottom:-2px;color:#1e293b;">\uB9AC\uD3EC\uD2B8</button>
+          <button data-tab="devrequest" style="flex:1;padding:8px 0;font-size:13px;font-weight:500;border:none;background:none;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;color:#94a3b8;">\uBBF8\uC218\uC815 DEV-REQUEST</button>
+        </div>
+        <div class="qa-feedback-output-pre">
+          <pre id="qaReviewOutputPre"></pre>
+        </div>
+        <div class="qa-feedback-output-actions">
+          <button style="background:#f1f5f9;color:#475569;" onclick="this.closest('.qa-feedback-output-overlay').remove()">\uB2EB\uAE30</button>
+          <button style="background:#1e293b;color:#fff;" id="qaReviewCopyBtn">\uD074\uB9BD\uBCF4\uB4DC \uBCF5\uC0AC</button>
+          <button style="background:#f59e0b;color:#fff;" id="qaReviewFinishBtn">\uC7AC\uAC80\uC218 \uC885\uB8CC</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+
+    const pre = qs('#qaReviewOutputPre', overlay);
+    pre.textContent = md;
+
+    // 탭 전환
+    qs('#qaReviewTabs', overlay).querySelectorAll('button').forEach(btn => {
+      btn.onclick = () => {
+        currentReviewTab = btn.dataset.tab;
+        pre.textContent = currentReviewTab === 'report' ? md : devReq;
+        qs('#qaReviewTabs', overlay).querySelectorAll('button').forEach(b => {
+          const isActive = b.dataset.tab === currentReviewTab;
+          b.style.borderBottomColor = isActive ? '#1e293b' : 'transparent';
+          b.style.color = isActive ? '#1e293b' : '#94a3b8';
+          b.style.fontWeight = isActive ? '600' : '500';
+        });
+      };
+    });
+
+    qs('#qaReviewCopyBtn', overlay).onclick = () => {
+      const text = pre.textContent;
+      navigator.clipboard.writeText(text).then(() => {
+        qs('#qaReviewCopyBtn', overlay).textContent = '\uBCF5\uC0AC \uC644\uB8CC!';
+        setTimeout(() => { qs('#qaReviewCopyBtn', overlay).textContent = '\uD074\uB9BD\uBCF4\uB4DC \uBCF5\uC0AC'; }, 1500);
+      });
+    };
+
+    qs('#qaReviewFinishBtn', overlay).onclick = async () => {
+      const text = pre.textContent;
+      await navigator.clipboard.writeText(text);
+      showToast('\uB9AC\uD3EC\uD2B8\uAC00 \uD074\uB9BD\uBCF4\uB4DC\uC5D0 \uBCF5\uC0AC\uB418\uC5C8\uC2B5\uB2C8\uB2E4.');
+      overlay.remove();
+
+      const data = await getSessionsData();
+      const sessionIdx = data.sessions.findIndex(s => s.id === STATE.reviewSessionId);
+      if (sessionIdx !== -1) {
+        if (confirm('\uC138\uC158\uC744 \uC0AD\uC81C\uD558\uC2DC\uACA0\uC2B5\uB2C8\uAE4C?')) {
+          data.sessions.splice(sessionIdx, 1);
+        } else {
+          data.sessions[sessionIdx].status = 'closed';
+          data.sessions[sessionIdx].feedbacks = STATE.feedbacks.map(fb => ({ ...fb, el: null }));
+        }
+        await saveSessionsData(data);
+      }
+      exitReviewMode();
+    };
+
+    overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+  }
+
+  async function generateReviewMarkdown() {
+    const now = new Date();
+    const dateStr = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0') + '-' + String(now.getDate()).padStart(2,'0') + ' ' + String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0');
+    const page = location.pathname.split('/').pop() || 'index.html';
+
+    const data = await getSessionsData();
+    const session = data.sessions.find(s => s.id === STATE.reviewSessionId);
+    const createdAt = session ? session.createdAt.replace('T', ' ').slice(0, 16) : '';
+    const reviewCount = session ? (session.reviewCount || 1) : 1;
+
+    const total = STATE.feedbacks.length;
+    const fixedCount = STATE.feedbacks.filter(fb => fb.reviewStatus === 'fixed').length;
+    const notFixedCount = STATE.feedbacks.filter(fb => fb.reviewStatus === 'not-fixed').length;
+    const notFoundCount = STATE.feedbacks.filter(fb => !fb.reviewStatus && !fb.el && fb.selector).length;
+    const pct = (n) => total > 0 ? Math.round(n / total * 100) : 0;
+
+    let md = `# QA \uC7AC\uAC80\uC218 \uB9AC\uD3EC\uD2B8 \u2014 ${page}\n`;
+    md += `> \uAC80\uC218 \uCC28\uC218: ${reviewCount}\uCC28 \uC7AC\uAC80\uC218\n`;
+    md += `> \uC6D0\uBCF8 \uAC80\uC218\uC77C: ${createdAt}\n`;
+    md += `> \uC7AC\uAC80\uC218\uC77C: ${dateStr}\n`;
+    md += `> \uACB0\uACFC \uC694\uC57D: \u2705 ${fixedCount}\uAC74 \uC218\uC815\uB428 (${pct(fixedCount)}%) / \u274C ${notFixedCount}\uAC74 \uBBF8\uC218\uC815 (${pct(notFixedCount)}%)`;
+    if (notFoundCount > 0) md += ` / \u26A0\uFE0F ${notFoundCount}\uAC74 \uC694\uC18C \uBBBB \uCC3E\uC74C (${pct(notFoundCount)}%)`;
+    md += `\n\n---\n\n`;
+
+    // 통계 테이블
+    md += `## \uD83D\uDCCA \uD1B5\uACC4\n\n`;
+    md += `| \uC0C1\uD0DC | \uAC74\uC218 | \uBE44\uC728 |\n`;
+    md += `|------|------|------|\n`;
+    md += `| \u2705 \uC218\uC815\uB428 | ${fixedCount} | ${pct(fixedCount)}% |\n`;
+    md += `| \u274C \uBBF8\uC218\uC815 | ${notFixedCount} | ${pct(notFixedCount)}% |\n`;
+    if (notFoundCount > 0) md += `| \u26A0\uFE0F \uC694\uC18C \uBBBB \uCC3E\uC74C | ${notFoundCount} | ${pct(notFoundCount)}% |\n`;
+    md += `\n---\n\n`;
+
+    // 항목별 상세
+    STATE.feedbacks.forEach((fb, i) => {
+      const num = i + 1;
+      const typeTag = fb.fbType ? `[${fb.fbType}] ` : '';
+      const tag = fb.tagName || '\uC601\uC5ED';
+      const sectionLabel = fb.section ? ' \u2014 ' + fb.section : '';
+      md += `## ${circled(num)} ${typeTag}${tag}${sectionLabel}\n`;
+      if (fb.selector) md += `- **\uC694\uC18C**: \`${fb.selector}\`\n`;
+      md += `- **\uC6D0\uBCF8 \uD53C\uB4DC\uBC31**: ${fb.feedback}\n`;
+
+      if (fb.reviewStatus === 'fixed') {
+        md += `- **\uC7AC\uAC80\uC218 \uACB0\uACFC**: \u2705 \uC218\uC815\uB428\n`;
+      } else if (fb.reviewStatus === 'not-fixed') {
+        md += `- **\uC7AC\uAC80\uC218 \uACB0\uACFC**: \u274C \uBBF8\uC218\uC815\n`;
+      } else {
+        md += `- **\uC7AC\uAC80\uC218 \uACB0\uACFC**: \u2753 \uBBF8\uD655\uC778\n`;
+      }
+
+      if (fb.reviewNote) md += `- **\uC7AC\uAC80\uC218 \uBA54\uBAA8**: ${fb.reviewNote}\n`;
+      md += '\n';
+    });
+
+    md += `---\n> \uC774 \uB9AC\uD3EC\uD2B8\uB97C \uD074\uB85C\uB4DC \uCF54\uB4DC\uC5D0 \uBD99\uC5EC\uB123\uC5B4 \uBBF8\uC218\uC815 \uD56D\uBAA9\uC758 \uC218\uC815\uC744 \uC694\uCCAD\uD558\uC138\uC694.\n`;
+    return md;
+  }
+
+  function generateNotFixedDevRequest() {
+    const notFixed = STATE.feedbacks.filter(fb => fb.reviewStatus === 'not-fixed');
+    if (notFixed.length === 0) return '(\uBBF8\uC218\uC815 \uD56D\uBAA9\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.)';
+
+    const now = new Date();
+    const dateStr = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0') + '-' + String(now.getDate()).padStart(2,'0');
+    const page = location.pathname.split('/').pop() || 'index.html';
+
+    let md = `# DEV-REQUEST (\uBBF8\uC218\uC815 \uD56D\uBAA9) \u2014 ${page}\n> \uC694\uCCAD\uC77C: ${dateStr}\n> \uBBF8\uC218\uC815: ${notFixed.length}\uAC74\n\n---\n\n`;
+
+    notFixed.forEach((fb, i) => {
+      const num = i + 1;
+      const typeTag = fb.fbType || 'UI';
+      const summary = fb.feedback.length > 30 ? fb.feedback.substring(0, 30) + '...' : fb.feedback;
+      const categoryMap = { 'UI': '\uC2A4\uD0C0\uC77C/\uB808\uC774\uC544\uC6C3', '\uAE30\uB2A5': '\uB3D9\uC791/\uB85C\uC9C1', '\uD14D\uC2A4\uD2B8': '\uBB38\uAD6C', '\uC704\uCE58\uC774\uB3D9': '\uC704\uCE58 \uC774\uB3D9' };
+      const category = categoryMap[typeTag] || typeTag;
+
+      md += `### BUG-${String(num).padStart(3,'0')}: [${typeTag}] ${summary}\n`;
+      md += `- **\uC0C1\uD0DC**: \uD83D\uDCCB \uC694\uCCAD\n`;
+      md += `- **\uC694\uCCAD\uC77C**: ${dateStr}\n`;
+      md += `- **\uCE74\uD14C\uACE0\uB9AC**: ${category}\n`;
+      md += `- **\uC11C\uBE44\uC2A4 \uBCF8\uC9C8 \uC5F0\uACB0**: (\uC218\uB3D9 \uC785\uB825)\n`;
+
+      if (fb.selector) {
+        md += `- **\uC218\uC815 \uC704\uCE58**: \`${fb.selector}\`\n`;
+      }
+
+      if (fb.textContent) {
+        md += `- **\uD604\uC7AC \uC0C1\uD0DC**: "${fb.textContent.length > 60 ? fb.textContent.substring(0, 60) + '...' : fb.textContent}"\n`;
+      }
+
+      md += `- **\uC218\uC815 \uB0B4\uC6A9**: ${fb.feedback}\n`;
+      if (fb.reviewNote) md += `- **\uC7AC\uAC80\uC218 \uBA54\uBAA8**: ${fb.reviewNote}\n`;
+      md += `- **\uD14C\uC2A4\uD2B8 \uBC29\uBC95**: \uD574\uB2F9 \uC694\uC18C \uD655\uC778\n`;
+      md += '\n---\n\n';
+    });
+
+    return md;
+  }
+
+  async function cancelReview() {
+    const data = await getSessionsData();
+    const session = data.sessions.find(s => s.id === STATE.reviewSessionId);
+    if (session) {
+      session.status = 'open';
+      await saveSessionsData(data);
+    }
+    exitReviewMode();
+    showToast('\uC7AC\uAC80\uC218\uAC00 \uCDE8\uC18C\uB418\uC5C8\uC2B5\uB2C8\uB2E4.');
+  }
+
+  function exitReviewMode() {
+    STATE.reviewMode = false;
+    STATE.reviewSessionId = null;
+
+    document.querySelectorAll('.qa-feedback-review-overlay').forEach(e => e.remove());
+
+    ['#qaReviewCancel', '#qaReviewComplete', '#qaReviewSep'].forEach(id => {
+      const el = qs(id);
+      if (el) el.remove();
+    });
+
+    if (STATE.savedFeedbacksBeforeReview) {
+      STATE.feedbacks = STATE.savedFeedbacksBeforeReview.feedbacks;
+      STATE.nextId = STATE.savedFeedbacksBeforeReview.nextId;
+      STATE.savedFeedbacksBeforeReview = null;
+      STATE.feedbacks.forEach(fb => {
+        if (fb.selector) {
+          const el = document.querySelector(fb.selector);
+          if (el) { fb.el = el; fb.fbType === '\uC704\uCE58\uC774\uB3D9' ? addMoveOverlay(el, fb.id) : addOverlay(el, fb.id); }
+        }
+      });
+    } else {
+      STATE.feedbacks = [];
+      STATE.nextId = 1;
+    }
+
+    updateCount();
+    saveFeedbacks();
+  }
+
+  function restoreSessionFeedbacks(session) {
+    document.querySelectorAll('.qa-feedback-selected-overlay').forEach(e => e.remove());
+    if (currentPopup) { currentPopup.remove(); currentPopup = null; }
+
+    STATE.feedbacks = session.feedbacks || [];
+    STATE.nextId = session.nextId || STATE.feedbacks.length + 1;
+
+    STATE.feedbacks.forEach(fb => {
+      if (fb.selector) {
+        const el = document.querySelector(fb.selector);
+        if (el) {
+          fb.el = el;
+          fb.fbType === '\uC704\uCE58\uC774\uB3D9' ? addMoveOverlay(el, fb.id) : addOverlay(el, fb.id);
+        }
+      }
+    });
+
+    updateCount();
+    saveFeedbacks();
+  }
+
+  /* ===== Markdown Import ===== */
+  function parseMarkdown(md) {
+    const feedbacks = [];
+    const sections = md.split(/^## /m).slice(1);
+
+    sections.forEach(section => {
+      const lines = section.split('\n');
+      const headerLine = lines[0] || '';
+
+      const headerMatch = headerLine.match(/^[\u2460\u2461\u2462\u2463\u2464\u2465\u2466\u2467\u2468\u2469\u246A\u246B\u246C\u246D\u246E\u246F\u2470\u2471\u2472\u2473\(\d+\)]+\s*(?:\[([^\]]*)\]\s*)?(\S+)?(?:\s*\u2014\s*(.+))?/);
+      const fbType = headerMatch ? (headerMatch[1] || 'UI') : 'UI';
+      const tagName = headerMatch ? (headerMatch[2] || null) : null;
+      const sectionName = headerMatch ? (headerMatch[3] || '').trim() || null : null;
+
+      let selector = null;
+      let feedback = null;
+      let textContent = null;
+
+      lines.forEach(line => {
+        const selectorMatch = line.match(/^\- \*\*\uC694\uC18C\*\*:\s*`([^`]+)`/);
+        if (selectorMatch) selector = selectorMatch[1];
+
+        const feedbackMatch = line.match(/^\- \*\*\uD53C\uB4DC\uBC31\*\*:\s*(.+)/);
+        if (feedbackMatch) feedback = feedbackMatch[1].trim();
+
+        const textMatch = line.match(/^\- \*\*\uD604\uC7AC \uD14D\uC2A4\uD2B8\*\*:\s*"([^"]*)"/);
+        if (textMatch) textContent = textMatch[1];
+      });
+
+      if (feedback && selector) {
+        feedbacks.push({ selector, feedback, fbType, tagName, section: sectionName, textContent });
+      }
+    });
+
+    return feedbacks;
+  }
+
+  function showMarkdownImport() {
+    const overlay = ce('div', 'qa-settings-overlay');
+    overlay.innerHTML = `
+      <div class="qa-settings-modal" style="width:480px;max-height:80vh;display:flex;flex-direction:column;">
+        <div class="qa-settings-modal-header">
+          <h3>\uD83D\uDCCB \uB9C8\uD06C\uB2E4\uC6B4 \uAC00\uC838\uC624\uAE30</h3>
+        </div>
+        <div class="qa-settings-modal-body" style="flex:1;">
+          <div style="font-size:12px;color:#94a3b8;margin-bottom:8px;">QA \uD53C\uB4DC\uBC31 \uB9C8\uD06C\uB2E4\uC6B4\uC744 \uBD99\uC5EC\uB123\uC73C\uC138\uC694.</div>
+          <textarea id="qaImportTextarea" style="width:100%;min-height:200px;padding:10px;border:1px solid #475569;border-radius:8px;background:#0f172a;color:#e2e8f0;font-size:12px;font-family:'SF Mono',Menlo,monospace;outline:none;resize:vertical;" placeholder="# QA \uD53C\uB4DC\uBC31 \u2014 demo.html\n...\n\n\uC5EC\uAE30\uC5D0 \uBD99\uC5EC\uB123\uAE30"></textarea>
+          <label style="display:flex;align-items:center;gap:6px;margin-top:10px;font-size:12px;color:#94a3b8;cursor:pointer;">
+            <input type="checkbox" id="qaImportReviewMode" style="accent-color:#f59e0b;" />
+            \uAC00\uC838\uC628 \uD6C4 \uC7AC\uAC80\uC218 \uBAA8\uB4DC\uB85C \uC9C4\uC785
+          </label>
+        </div>
+        <div class="qa-settings-modal-footer">
+          <button class="qa-settings-btn-close" id="qaImportCancel">\uCDE8\uC18C</button>
+          <button class="qa-settings-btn-save" id="qaImportConfirm">\uAC00\uC838\uC624\uAE30</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+
+    const textarea = qs('#qaImportTextarea', overlay);
+    textarea.focus();
+
+    qs('#qaImportCancel', overlay).onclick = () => overlay.remove();
+    qs('#qaImportConfirm', overlay).onclick = async () => {
+      const md = textarea.value.trim();
+      if (!md) { textarea.style.borderColor = '#ef4444'; return; }
+
+      const parsed = parseMarkdown(md);
+      if (parsed.length === 0) {
+        alert('\uD53C\uB4DC\uBC31\uC744 \uD30C\uC2F1\uD560 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4. \uB9C8\uD06C\uB2E4\uC6B4 \uD615\uC2DD\uC744 \uD655\uC778\uD574\uC8FC\uC138\uC694.');
+        return;
+      }
+
+      const enterReview = qs('#qaImportReviewMode', overlay).checked;
+      overlay.remove();
+
+      document.querySelectorAll('.qa-feedback-selected-overlay').forEach(e => e.remove());
+      if (currentPopup) { currentPopup.remove(); currentPopup = null; }
+
+      STATE.feedbacks = [];
+      STATE.nextId = 1;
+      let restored = 0;
+
+      parsed.forEach(p => {
+        const id = STATE.nextId++;
+        const fb = {
+          id: id,
+          el: null,
+          selector: p.selector,
+          section: p.section,
+          tagName: p.tagName,
+          classes: [],
+          textContent: p.textContent || null,
+          bbox: null,
+          styles: null,
+          feedback: p.feedback,
+          fbType: p.fbType,
+          moveTarget: null,
+        };
+
+        if (p.selector) {
+          const el = document.querySelector(p.selector);
+          if (el) {
+            fb.el = el;
+            fb.bbox = { x: Math.round(el.getBoundingClientRect().x), y: Math.round(el.getBoundingClientRect().y), w: Math.round(el.getBoundingClientRect().width), h: Math.round(el.getBoundingClientRect().height) };
+            fb.fbType === '\uC704\uCE58\uC774\uB3D9' ? addMoveOverlay(el, id) : addOverlay(el, id);
+            restored++;
+          }
+        }
+
+        STATE.feedbacks.push(fb);
+      });
+
+      updateCount();
+      await saveFeedbacks();
+      showToast(parsed.length + '\uAC74\uC758 \uD53C\uB4DC\uBC31\uC744 \uAC00\uC838\uC654\uC2B5\uB2C8\uB2E4. (' + restored + '\uAC74 \uBCF5\uC6D0 \uC131\uACF5)');
+
+      if (enterReview) {
+        const data = await getSessionsData();
+        const pageName = location.pathname.split('/').pop() || 'index.html';
+        const sessionObj = {
+          id: 'session-' + Date.now(),
+          name: pageName + ' \u2014 \uAC00\uC838\uC624\uAE30',
+          page: location.pathname,
+          url: location.href,
+          createdAt: new Date().toISOString(),
+          status: 'open',
+          feedbacks: STATE.feedbacks.map(fb => ({ ...fb, el: null })),
+          nextId: STATE.nextId
+        };
+        data.sessions.push(sessionObj);
+        await saveSessionsData(data);
+        const idx = data.sessions.length - 1;
+
+        document.querySelectorAll('.qa-feedback-selected-overlay').forEach(e => e.remove());
+
+        enterReviewMode(idx);
+      }
+    };
+
+    setTimeout(() => {
+      overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+    }, 100);
+  }
+
+  /* ===== Shortcut Config ===== */
+  const DEFAULT_KEYS = {
+    toggle: { alt: true, key: 'q' },
+    element: { key: '1' },
+    export: { key: 'e' },
+    reset: { key: 'r' },
+  };
+  let shortcutKeys = JSON.parse(JSON.stringify(DEFAULT_KEYS));
+
+  function normalizeKeyConfig(v) {
+    if (typeof v === 'string') return { key: v };
+    return v;
+  }
+
+  async function loadShortcuts() {
+    try {
+      const result = await chrome.storage.local.get('qa-shortcuts');
+      const saved = result['qa-shortcuts'];
+      if (saved) {
+        Object.keys(saved).forEach(k => {
+          shortcutKeys[k] = normalizeKeyConfig(saved[k]);
+        });
+      }
+    } catch(e) {}
+  }
+
+  async function saveShortcuts() {
+    await chrome.storage.local.set({ 'qa-shortcuts': shortcutKeys });
+  }
+
+  function keyLabel(config) {
+    config = normalizeKeyConfig(config);
+    let label = '';
+    if (config.ctrl) label += '\u2303';
+    if (config.alt) label += '\u2325';
+    if (config.shift) label += '\u21E7';
+    if (config.meta) label += '\u2318';
+    label += config.key.length === 1 ? config.key.toUpperCase() : config.key;
+    return label;
+  }
+
+  function matchShortcut(e, config) {
+    config = normalizeKeyConfig(config);
+    if (e.key.toLowerCase() !== config.key.toLowerCase()) return false;
+    if (!!config.alt !== e.altKey) return false;
+    if (!!config.ctrl !== e.ctrlKey) return false;
+    if (!!config.shift !== e.shiftKey) return false;
+    if (!!config.meta !== e.metaKey) return false;
+    return true;
+  }
+
+  function updateHints() {
+    const toggleHint = panel.querySelector('.qa-shortcut-hint:not([data-action])');
+    if (toggleHint) toggleHint.textContent = keyLabel(shortcutKeys.toggle);
+    panel.querySelectorAll('.qa-shortcut-hint[data-action]').forEach(el => {
+      if (shortcutKeys[el.dataset.action]) el.textContent = keyLabel(shortcutKeys[el.dataset.action]);
+    });
+  }
+
+  /* ===== Settings Popup ===== */
+  function buildSettings() {
+    const actions = [
+      { key:'toggle', label:'검수 ON/OFF' },
+      { key:'element', label:'요소 선택' },
+      { key:'export', label:'마크다운 출력' },
+      { key:'reset', label:'초기화' },
+    ];
+
+    qs('#qaSettingsToggle').onclick = () => {
+      const draft = JSON.parse(JSON.stringify(shortcutKeys));
+
+      const overlay = ce('div', 'qa-settings-overlay');
+      overlay.innerHTML = `
+        <div class="qa-settings-modal">
+          <div class="qa-settings-modal-header">
+            <h3>\u2699\uFE0F \uB2E8\uCD95\uD0A4 \uC124\uC815</h3>
+          </div>
+          <div class="qa-settings-modal-body" id="qaSettingsBody"></div>
+          <div class="qa-settings-modal-footer">
+            <button class="qa-settings-btn-restore" id="qaSettingsRestore">\uAE30\uBCF8\uAC12 \uBCF5\uC6D0</button>
+            <button class="qa-settings-btn-close" id="qaSettingsClose">\uB2EB\uAE30</button>
+            <button class="qa-settings-btn-save" id="qaSettingsSave">\uC800\uC7A5</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(overlay);
+
+      ['mousedown','mouseup','mousemove'].forEach(evt => {
+        overlay.addEventListener(evt, (ev) => {
+          if (ev.target === overlay) ev.stopPropagation();
+        }, true);
+      });
+
+      setTimeout(() => {
+        overlay.addEventListener('click', (ev) => {
+          if (ev.target === overlay) { ev.stopPropagation(); overlay.remove(); }
+        });
+      }, 100);
+
+      function renderRows() {
+        const body = qs('#qaSettingsBody', overlay);
+        body.innerHTML = actions.map(a =>
+          `<div class="qa-settings-row">
+            <span>${a.label}</span>
+            <span class="qa-settings-key">${keyLabel(draft[a.key])}</span>
+            <button class="qa-settings-change" data-action="${a.key}">\uBCC0\uACBD</button>
+          </div>`
+        ).join('');
+
+        body.querySelectorAll('.qa-settings-change').forEach(btn => {
+          btn.onclick = () => {
+            btn.textContent = '\uD0A4 \uC785\uB825...';
+            btn.classList.add('listening');
+            const handler = (ev) => {
+              ev.preventDefault(); ev.stopPropagation();
+              if (['Alt','Control','Shift','Meta'].includes(ev.key)) return;
+              if (ev.key === 'Escape') { btn.textContent = '\uBCC0\uACBD'; btn.classList.remove('listening'); document.removeEventListener('keydown', handler, true); return; }
+              const keyConfig = { key: ev.key.length === 1 ? ev.key.toLowerCase() : ev.key };
+              if (ev.altKey) keyConfig.alt = true;
+              if (ev.ctrlKey) keyConfig.ctrl = true;
+              if (ev.shiftKey) keyConfig.shift = true;
+              if (ev.metaKey) keyConfig.meta = true;
+              draft[btn.dataset.action] = keyConfig;
+              renderRows();
+              document.removeEventListener('keydown', handler, true);
+            };
+            document.addEventListener('keydown', handler, true);
+          };
+        });
+      }
+      renderRows();
+
+      qs('#qaSettingsRestore', overlay).onclick = () => {
+        Object.assign(draft, JSON.parse(JSON.stringify(DEFAULT_KEYS)));
+        renderRows();
+      };
+      qs('#qaSettingsClose', overlay).onclick = () => overlay.remove();
+      qs('#qaSettingsSave', overlay).onclick = () => {
+        Object.keys(draft).forEach(k => shortcutKeys[k] = draft[k]);
+        saveShortcuts();
+        updateHints();
+        overlay.remove();
+      };
+    };
+  }
+
+  /* ===== Keyboard Shortcuts ===== */
+  document.addEventListener('keydown', e => {
+    const tag = (e.target.tagName || '').toLowerCase();
+    if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+    if (document.querySelector('.qa-settings-overlay')) return;
+
+    if (matchShortcut(e, shortcutKeys.toggle)) {
+      e.preventDefault();
+      toggleActive();
+      return;
+    }
+
+    if (e.key === 'Escape') {
+      if (STATE.moveMode) { exitMoveMode(); return; }
+      if (currentPopup) { currentPopup.remove(); currentPopup = null; return; }
+      document.querySelectorAll('.qa-feedback-output-overlay').forEach(el => el.remove());
+      if (STATE.reviewMode) { cancelReview(); return; }
+      return;
+    }
+
+    if (matchShortcut(e, shortcutKeys.export)) { showOutput(); return; }
+
+    if (!STATE.active) return;
+
+    if (matchShortcut(e, shortcutKeys.element)) { STATE.mode = 'element'; updateModeButton(); return; }
+    if (matchShortcut(e, shortcutKeys.reset)) { resetAll(); return; }
+  });
+
+  /* ===== Chrome Extension Message Handler ===== */
+  chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+    if (msg.action === 'toggle-qa') {
+      if (panel) {
+        panel.style.display = panel.style.display === 'none' ? '' : 'none';
+      }
+      toggleActive();
+    }
+    if (msg.action === 'get-status') {
+      sendResponse({ active: STATE.active, feedbackCount: STATE.feedbacks.length });
+    }
+    if (msg.action === 'open-session-list') {
+      loadSessionList();
+    }
+  });
+
+  /* ===== Init ===== */
+  async function init() {
+    await loadShortcuts();
+    buildPanel();
+    panel.style.display = 'none';
+    buildSettings();
+    updateHints();
+    await restoreFeedbacks();
+    console.log('[QA Feedback] Content script loaded');
+  }
+
+  init();
+})();
