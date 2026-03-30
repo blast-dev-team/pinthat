@@ -19,20 +19,21 @@
   };
 
   /* ===== Storage (chrome.storage.local) ===== */
-  const STORAGE_KEY = 'qa-feedbacks-' + location.origin + location.pathname;
+  let currentUrl = location.origin + location.pathname;
+  function getStorageKey() { return 'qa-feedbacks-' + currentUrl; }
   const SESSIONS_KEY = 'qa-sessions';
 
   async function saveFeedbacks() {
     try {
       const data = STATE.feedbacks.map(fb => ({ ...fb, el: null }));
-      await chrome.storage.local.set({ [STORAGE_KEY]: { feedbacks: data, nextId: STATE.nextId } });
+      await chrome.storage.local.set({ [getStorageKey()]: { feedbacks: data, nextId: STATE.nextId } });
     } catch(e) {}
   }
 
   async function restoreFeedbacks() {
     try {
-      const result = await chrome.storage.local.get(STORAGE_KEY);
-      const saved = result[STORAGE_KEY];
+      const result = await chrome.storage.local.get(getStorageKey());
+      const saved = result[getStorageKey()];
       if (!saved) return;
       const { feedbacks, nextId } = saved;
       if (!feedbacks || feedbacks.length === 0) return;
@@ -1086,7 +1087,7 @@
     if (!confirm('\uBAA8\uB4E0 \uD53C\uB4DC\uBC31\uC744 \uCD08\uAE30\uD654\uD558\uC2DC\uACA0\uC2B5\uB2C8\uAE4C?')) return;
     STATE.feedbacks = [];
     STATE.nextId = 1;
-    await chrome.storage.local.remove(STORAGE_KEY);
+    await chrome.storage.local.remove(getStorageKey());
     document.querySelectorAll('.qa-feedback-selected-overlay, .qa-feedback-number-badge').forEach(e => e.remove());
     if (currentPopup) { currentPopup.remove(); currentPopup = null; }
     document.querySelectorAll('.qa-feedback-output-overlay').forEach(e => e.remove());
@@ -2032,6 +2033,87 @@
     }
   });
 
+  /* ===== Overlay Visibility ===== */
+  function isElementVisible(el) {
+    if (!el || !el.isConnected) return false;
+    const cs = getComputedStyle(el);
+    if (cs.display === 'none' || cs.visibility === 'hidden') return false;
+    if (!el.offsetParent && cs.position !== 'fixed') return false;
+    const r = el.getBoundingClientRect();
+    return r.width > 0 && r.height > 0;
+  }
+
+  function refreshOverlayVisibility() {
+    document.querySelectorAll('.qa-feedback-selected-overlay, .qa-feedback-review-overlay').forEach(ov => {
+      const id = ov.dataset.qaId || ov.dataset.qaReviewIdx;
+      if (!id) return;
+
+      const fb = STATE.feedbacks.find(f => String(f.id) === String(id));
+      if (!fb || !fb.selector) return;
+
+      const el = document.querySelector(fb.selector);
+      if (el && isElementVisible(el)) {
+        ov.style.display = '';
+        // 위치 갱신
+        const rect = el.getBoundingClientRect();
+        ov.style.left = (rect.left + window.scrollX) + 'px';
+        ov.style.top = (rect.top + window.scrollY) + 'px';
+        ov.style.width = rect.width + 'px';
+        ov.style.height = rect.height + 'px';
+      } else {
+        ov.style.display = 'none';
+      }
+    });
+  }
+
+  let visibilityTimer = null;
+  function debouncedRefresh() {
+    if (visibilityTimer) clearTimeout(visibilityTimer);
+    visibilityTimer = setTimeout(refreshOverlayVisibility, 300);
+  }
+
+  /* MutationObserver: DOM 변화 감지 */
+  function startMutationObserver() {
+    const observer = new MutationObserver(debouncedRefresh);
+    observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class', 'hidden'] });
+  }
+
+  /* URL 변화 감지 (SPA 대응) */
+  let lastUrl = location.href;
+
+  function onUrlChange() {
+    const newUrl = location.href;
+    if (newUrl === lastUrl) return;
+    lastUrl = newUrl;
+    currentUrl = location.origin + location.pathname;
+
+    // 기존 오버레이 모두 제거
+    document.querySelectorAll('.qa-feedback-selected-overlay').forEach(e => e.remove());
+    if (currentPopup) { currentPopup.remove(); currentPopup = null; }
+
+    // 새 URL의 피드백 복원
+    STATE.feedbacks = [];
+    STATE.nextId = 1;
+    restoreFeedbacks();
+  }
+
+  window.addEventListener('popstate', onUrlChange);
+
+  // pushState / replaceState 감지
+  const origPushState = history.pushState;
+  const origReplaceState = history.replaceState;
+  history.pushState = function() {
+    origPushState.apply(this, arguments);
+    setTimeout(onUrlChange, 0);
+  };
+  history.replaceState = function() {
+    origReplaceState.apply(this, arguments);
+    setTimeout(onUrlChange, 0);
+  };
+
+  /* 주기적 체크 (백업) */
+  setInterval(refreshOverlayVisibility, 2000);
+
   /* ===== Init ===== */
   async function init() {
     await loadShortcuts();
@@ -2040,6 +2122,7 @@
     buildSettings();
     updateHints();
     await restoreFeedbacks();
+    startMutationObserver();
     console.log('[QA Feedback] Content script loaded');
   }
 
