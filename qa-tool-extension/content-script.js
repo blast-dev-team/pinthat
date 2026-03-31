@@ -2299,19 +2299,21 @@
 
   async function showGitHubIssueList() {
     const mapping = await getGitHubMapping();
-    if (!mapping) {
-      showToast('GitHub 설정이 필요합니다.');
-      return;
-    }
+    if (!mapping) { showToast('GitHub 설정이 필요합니다.'); return; }
 
     const overlay = ce('div', 'qa-feedback-output-overlay');
     overlay.innerHTML = `
-      <div class="qa-feedback-output-modal" style="max-width:500px;">
+      <div class="qa-feedback-output-modal" style="max-width:520px;">
         <div class="qa-feedback-output-modal-header">
           <h3>\uD83D\uDCCB GitHub 이슈 현황</h3>
           <button onclick="this.closest('.qa-feedback-output-overlay').remove()" style="background:none;border:none;font-size:18px;cursor:pointer;color:#94a3b8;">\u2715</button>
         </div>
-        <div id="qaGhIssueListBody" style="padding:16px 20px;overflow-y:auto;max-height:60vh;">
+        <div class="qa-gh-filter-tabs" id="qaGhFilterTabs">
+          <button class="qa-gh-filter-tab active" data-filter="all">전체</button>
+          <button class="qa-gh-filter-tab" data-filter="open">Open</button>
+          <button class="qa-gh-filter-tab" data-filter="closed">Closed</button>
+        </div>
+        <div id="qaGhIssueListBody" style="padding:12px 20px;overflow-y:auto;max-height:55vh;">
           <div style="text-align:center;color:#94a3b8;padding:20px;">이슈 불러오는 중...</div>
         </div>
         <div class="qa-feedback-output-actions">
@@ -2322,34 +2324,66 @@
     document.body.appendChild(overlay);
     overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
 
+    let allIssues = [];
+    let activeFilter = 'all';
     const body = qs('#qaGhIssueListBody', overlay);
+    const currentPath = location.pathname.split('/').pop() || 'index';
+
+    function renderIssues() {
+      const filtered = activeFilter === 'all' ? allIssues : allIssues.filter(i => i.state === activeFilter);
+      if (filtered.length === 0) {
+        body.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:20px;">표시할 이슈가 없습니다.</div>';
+        return;
+      }
+      body.innerHTML = filtered.map(issue => {
+        const isOpen = issue.state === 'open';
+        const icon = isOpen ? '\uD83D\uDFE2' : '\u2705';
+        const date = issue.created_at ? issue.created_at.slice(0, 10) : '';
+        const isSamePage = issue.title && issue.title.includes(currentPath);
+        const reviewBtn = (!isOpen && isSamePage) ? `<button class="qa-gh-action-btn qa-gh-review-btn" data-number="${issue.number}" data-url="${issue.html_url}" data-title="${issue.title.replace(/"/g, '&quot;')}">재검수</button>` : '';
+        return `
+          <div class="qa-gh-issue-row">
+            <div class="qa-gh-issue-info">
+              <div style="font-size:13px;font-weight:500;color:#1e293b;">${icon} ${issue.title}</div>
+              <div style="font-size:11px;color:#94a3b8;margin-top:3px;">${date}</div>
+            </div>
+            <div class="qa-gh-issue-actions">
+              ${reviewBtn}
+              <button class="qa-gh-action-btn qa-gh-link-btn" data-url="${issue.html_url}">GitHub \u2197</button>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      body.querySelectorAll('.qa-gh-link-btn').forEach(btn => {
+        btn.onclick = (e) => { e.stopPropagation(); window.open(btn.dataset.url, '_blank'); };
+      });
+      body.querySelectorAll('.qa-gh-review-btn').forEach(btn => {
+        btn.onclick = (e) => {
+          e.stopPropagation();
+          overlay.remove();
+          enterIssueReviewMode(parseInt(btn.dataset.number), btn.dataset.url, btn.dataset.title);
+        };
+      });
+    }
+
+    // 필터 탭
+    qs('#qaGhFilterTabs', overlay).querySelectorAll('.qa-gh-filter-tab').forEach(tab => {
+      tab.onclick = () => {
+        qs('#qaGhFilterTabs', overlay).querySelectorAll('.qa-gh-filter-tab').forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        activeFilter = tab.dataset.filter;
+        renderIssues();
+      };
+    });
 
     try {
-      const issues = await fetchGitHubIssues(mapping.repoOwner, mapping.repoName, mapping.token);
-
-      if (issues.length === 0) {
+      allIssues = await fetchGitHubIssues(mapping.repoOwner, mapping.repoName, mapping.token);
+      if (allIssues.length === 0) {
         body.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:20px;">아직 전송된 이슈가 없습니다.</div>';
         return;
       }
-
-      body.innerHTML = `<div style="font-size:12px;color:#94a3b8;margin-bottom:12px;">${mapping.repoOwner}/${mapping.repoName} — ${issues.length}건</div>` +
-        issues.map(issue => {
-          const stateIcon = issue.state === 'open' ? '\uD83D\uDFE2' : '\u2705';
-          const date = issue.created_at ? issue.created_at.slice(0, 10) : '';
-          return `
-            <div class="qa-gh-issue-item" data-url="${issue.html_url}" style="padding:10px 12px;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:8px;cursor:pointer;transition:background .15s;">
-              <div style="font-size:13px;font-weight:500;color:#1e293b;">${stateIcon} ${issue.title}</div>
-              <div style="font-size:11px;color:#94a3b8;margin-top:4px;">${date}</div>
-            </div>
-          `;
-        }).join('');
-
-      body.querySelectorAll('.qa-gh-issue-item').forEach(item => {
-        item.onmouseenter = () => { item.style.background = '#f8fafc'; };
-        item.onmouseleave = () => { item.style.background = ''; };
-        item.onclick = () => window.open(item.dataset.url, '_blank');
-      });
-
+      renderIssues();
     } catch(err) {
       const msg = err.message || '';
       if (msg.includes('401')) {
@@ -2358,6 +2392,95 @@
         body.innerHTML = '<div style="text-align:center;color:#ef4444;padding:20px;">이슈를 불러올 수 없습니다. 설정을 확인하세요.</div>';
       }
     }
+  }
+
+  /* ===== Issue 재검수 모드 ===== */
+  let issueReviewState = null;
+
+  function enterIssueReviewMode(issueNumber, issueUrl, issueTitle) {
+    issueReviewState = { number: issueNumber, url: issueUrl, title: issueTitle };
+
+    showToast('Closed 이슈의 피드백을 확인하세요. 수정이 안 됐으면 "재전송"을 눌러주세요.');
+
+    // 패널에 재검수 UI 추가
+    const body = qs('#qaPanelBody');
+    const existingReviewUI = qs('#qaIssueReviewUI');
+    if (existingReviewUI) existingReviewUI.remove();
+
+    const reviewUI = ce('div');
+    reviewUI.id = 'qaIssueReviewUI';
+    reviewUI.innerHTML = `
+      <div class="qa-feedback-sep"></div>
+      <div style="padding:8px 14px;font-size:12px;color:#94a3b8;">
+        \uD83D\uDD0D 재검수 모드<br>
+        <span style="color:#e2e8f0;font-weight:600;">${truncate(issueTitle, 30)} #${issueNumber}</span>
+      </div>
+      <button class="qa-feedback-btn" id="qaIssueReviewOk" style="color:#22c55e;">
+        <span class="qa-fb-icon">\u2705</span> 검수 완료
+      </button>
+      <button class="qa-feedback-btn" id="qaIssueReviewResend" style="color:#f59e0b;">
+        <span class="qa-fb-icon">\uD83D\uDD04</span> 재전송
+      </button>
+      <button class="qa-feedback-btn" id="qaIssueReviewCancel" style="color:#94a3b8;">
+        <span class="qa-fb-icon">\u274C</span> 취소
+      </button>
+    `;
+    body.appendChild(reviewUI);
+
+    qs('#qaIssueReviewOk').onclick = () => {
+      exitIssueReviewMode();
+      showToast('검수 완료 처리되었습니다.');
+    };
+
+    qs('#qaIssueReviewResend').onclick = async () => {
+      const mapping = await getGitHubMapping();
+      if (!mapping) { showToast('GitHub 설정이 필요합니다.'); return; }
+
+      qs('#qaIssueReviewResend').disabled = true;
+      qs('#qaIssueReviewResend').innerHTML = '<span class="qa-fb-icon">\uD83D\uDD04</span> 전송 중...';
+
+      try {
+        // Reopen
+        const reopenRes = await fetch(`https://api.github.com/repos/${mapping.repoOwner}/${mapping.repoName}/issues/${issueNumber}`, {
+          method: 'PATCH',
+          headers: { 'Authorization': `Bearer ${mapping.token}`, 'Accept': 'application/vnd.github.v3+json', 'Content-Type': 'application/json' },
+          body: JSON.stringify({ state: 'open' })
+        });
+
+        if (!reopenRes.ok) {
+          const status = reopenRes.status;
+          if (status === 401) showToast('❌ 토큰이 만료되었습니다.');
+          else if (status === 403) showToast('❌ 권한이 없습니다.');
+          else if (status === 404) showToast('❌ 이슈를 찾을 수 없습니다.');
+          else showToast(`❌ 재오픈 실패 (${status})`);
+          qs('#qaIssueReviewResend').disabled = false;
+          qs('#qaIssueReviewResend').innerHTML = '<span class="qa-fb-icon">\uD83D\uDD04</span> 재전송';
+          return;
+        }
+
+        // Comment
+        await fetch(`https://api.github.com/repos/${mapping.repoOwner}/${mapping.repoName}/issues/${issueNumber}/comments`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${mapping.token}`, 'Accept': 'application/vnd.github.v3+json', 'Content-Type': 'application/json' },
+          body: JSON.stringify({ body: '재검수 결과: 수정이 확인되지 않아 재오픈합니다.' })
+        });
+
+        exitIssueReviewMode();
+        showToast(`이슈 #${issueNumber}이 재오픈되었습니다.`);
+      } catch(err) {
+        showToast('❌ 네트워크 오류');
+        qs('#qaIssueReviewResend').disabled = false;
+        qs('#qaIssueReviewResend').innerHTML = '<span class="qa-fb-icon">\uD83D\uDD04</span> 재전송';
+      }
+    };
+
+    qs('#qaIssueReviewCancel').onclick = () => exitIssueReviewMode();
+  }
+
+  function exitIssueReviewMode() {
+    issueReviewState = null;
+    const ui = qs('#qaIssueReviewUI');
+    if (ui) ui.remove();
   }
 
   /* Issue 생성 */
