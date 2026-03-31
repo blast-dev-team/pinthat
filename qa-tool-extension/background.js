@@ -24,7 +24,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 
   if (msg.action === 'github-oauth-login') {
-    const authUrl = `https://github.com/login/oauth/authorize?client_id=${CLIENT_ID}&redirect_uri=${encodeURIComponent(WORKER_URL + '/callback')}&scope=repo`;
+    const extRedirectUrl = chrome.identity.getRedirectURL('callback');
+    const state = encodeURIComponent(extRedirectUrl);
+    const authUrl = `https://github.com/login/oauth/authorize?client_id=${CLIENT_ID}&redirect_uri=${encodeURIComponent(WORKER_URL + '/callback')}&scope=repo&state=${state}`;
 
     chrome.identity.launchWebAuthFlow({
       url: authUrl,
@@ -41,17 +43,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         const params = new URLSearchParams(hash);
         let token = params.get('access_token');
 
-        if (!token) {
-          const code = url.searchParams.get('code');
-          if (code) {
-            const res = await fetch(`${WORKER_URL}/token`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ code })
-            });
-            const data = await res.json();
-            token = data.access_token;
-          }
+        // hash에 error가 있으면 처리
+        const error = params.get('error');
+        if (error) {
+          sendResponse({ error: decodeURIComponent(error) });
+          return;
         }
 
         if (!token) {
