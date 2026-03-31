@@ -2193,9 +2193,29 @@
             <button id="qaGhDisconnect" style="margin-left:auto;padding:4px 10px;border-radius:6px;font-size:11px;border:1px solid #ef4444;color:#ef4444;background:none;cursor:pointer;">연결 해제</button>
           </div>
         `;
-        repoSection.style.display = '';
-        qs('#qaGhManualRepoArea', overlay).style.display = '';
-        loadRepoList(oauthToken);
+        // Pro면 레포 선택 표시, Free면 안내 텍스트
+        const currentPlan = await checkUserPlan();
+        if (currentPlan === 'pro') {
+          repoSection.style.display = '';
+          qs('#qaGhManualRepoArea', overlay).style.display = '';
+          loadRepoList(oauthToken);
+        } else {
+          repoSection.style.display = 'none';
+          qs('#qaGhManualRepoArea', overlay).style.display = 'none';
+          // Free 안내 텍스트
+          let freeNotice = qs('#qaGhFreeNotice', overlay);
+          if (!freeNotice) {
+            freeNotice = ce('div');
+            freeNotice.id = 'qaGhFreeNotice';
+            freeNotice.style.cssText = 'padding:14px;background:#0f172a;border-radius:8px;margin-top:12px;text-align:center;';
+            freeNotice.innerHTML = `
+              <div style="font-size:13px;color:#94a3b8;line-height:1.6;">GitHub 연동은 <strong style="color:#3b82f6;">Pro</strong> 기능입니다.<br>업그레이드하면 Issue 자동 전송을 사용할 수 있습니다.</div>
+              <button id="qaGhFreeUpgrade" style="margin-top:10px;padding:8px 20px;border-radius:8px;font-size:13px;font-weight:600;border:none;background:#3b82f6;color:#fff;cursor:pointer;">Pro로 업그레이드</button>
+            `;
+            authSection.after(freeNotice);
+          }
+          qs('#qaGhFreeUpgrade', overlay).onclick = () => { overlay.remove(); showProModal('GitHub 연동'); };
+        }
 
         qs('#qaGhDisconnect', overlay).onclick = async () => {
           const s = await loadGitHubSettings();
@@ -2204,6 +2224,8 @@
           oauthToken = null;
           connectionVerified = false;
           setSaveBtnEnabled(false);
+          const fn = qs('#qaGhFreeNotice', overlay);
+          if (fn) fn.remove();
           renderAuthSection();
           showToast('GitHub 연결이 해제되었습니다.');
         };
@@ -2783,50 +2805,69 @@
   }
 
   function showProModal(featureName) {
+    const descriptions = {
+      'GitHub Issue 전송': 'QA 피드백을 GitHub Issue로 자동 전송하는 기능입니다.\n한 번의 클릭으로 개발자에게 수정 요청을 보낼 수 있습니다.',
+      '이슈 현황': 'GitHub에 전송한 이슈들의 상태(Open/Closed)를 실시간으로 확인하는 기능입니다.',
+      '이슈 재전송': '수정이 안 된 이슈를 재오픈하고 코멘트를 자동 추가하는 기능입니다.',
+      '이슈 아카이브': '완료된 이슈를 아카이브하여 목록을 깔끔하게 관리하는 기능입니다.',
+      'GitHub 연동': 'GitHub와 연동하여 Issue 자동 전송, 이슈 현황 조회, 재검수 워크플로우를 사용할 수 있습니다.',
+    };
+    const desc = descriptions[featureName] || `${featureName} 기능을 사용할 수 있습니다.`;
+
     const overlay = ce('div', 'qa-settings-overlay');
     overlay.innerHTML = `
-      <div class="qa-settings-modal" style="width:380px;">
+      <div class="qa-settings-modal" style="width:400px;">
         <div class="qa-settings-modal-header">
           <h3>\u2B50 PinThat Pro</h3>
         </div>
         <div class="qa-settings-modal-body" style="text-align:center;">
-          <div style="font-size:14px;color:#e2e8f0;margin-bottom:16px;">
-            <strong>${escapeHtml(featureName)}</strong>은<br>Pro 기능입니다.
-          </div>
-          <div style="display:flex;gap:10px;justify-content:center;margin-bottom:16px;">
-            <div class="qa-feedback-pro-card" data-price="${PRICE_MONTHLY}" style="flex:1;padding:14px;border:1px solid #475569;border-radius:10px;cursor:pointer;transition:border-color .15s;">
-              <div style="font-size:18px;font-weight:700;color:#e2e8f0;">$4.98<span style="font-size:12px;font-weight:400;color:#94a3b8;">/월</span></div>
-              <div style="font-size:11px;color:#94a3b8;margin-top:4px;">구독형</div>
+          <div style="font-size:14px;font-weight:600;color:#e2e8f0;margin-bottom:8px;">${escapeHtml(featureName)}</div>
+          <div style="font-size:13px;color:#94a3b8;line-height:1.6;margin-bottom:16px;white-space:pre-line;">${escapeHtml(desc)}</div>
+          <div id="qaProPlanCards" style="display:none;">
+            <div style="display:flex;gap:10px;justify-content:center;margin-bottom:16px;">
+              <div class="qa-feedback-pro-card" data-price="${PRICE_MONTHLY}" style="flex:1;padding:14px;border:1px solid #475569;border-radius:10px;cursor:pointer;transition:border-color .15s;">
+                <div style="font-size:18px;font-weight:700;color:#e2e8f0;">$4.98<span style="font-size:12px;font-weight:400;color:#94a3b8;">/월</span></div>
+                <div style="font-size:11px;color:#94a3b8;margin-top:4px;">구독형</div>
+              </div>
+              <div class="qa-feedback-pro-card" data-price="${PRICE_LIFETIME}" style="flex:1;padding:14px;border:1px solid #475569;border-radius:10px;cursor:pointer;transition:border-color .15s;">
+                <div style="font-size:18px;font-weight:700;color:#e2e8f0;">$19.98</div>
+                <div style="font-size:11px;color:#94a3b8;margin-top:4px;">영구 (1회 결제)</div>
+              </div>
             </div>
-            <div class="qa-feedback-pro-card" data-price="${PRICE_LIFETIME}" style="flex:1;padding:14px;border:1px solid #475569;border-radius:10px;cursor:pointer;transition:border-color .15s;">
-              <div style="font-size:18px;font-weight:700;color:#e2e8f0;">$19.98</div>
-              <div style="font-size:11px;color:#94a3b8;margin-top:4px;">영구 (1회 결제)</div>
-            </div>
+            <div id="qaProLoginNotice" style="display:none;font-size:12px;color:#f59e0b;margin-bottom:10px;">GitHub 로그인이 필요합니다</div>
           </div>
-          <div id="qaProLoginNotice" style="display:none;font-size:12px;color:#f59e0b;margin-bottom:10px;">GitHub 로그인이 필요합니다</div>
         </div>
         <div class="qa-settings-modal-footer">
           <button class="qa-settings-btn-close" id="qaProCancel">나중에</button>
-          <button class="qa-settings-btn-save" id="qaProUpgrade">업그레이드</button>
+          <button class="qa-settings-btn-save" id="qaProStartBtn">Pro 시작하기</button>
+          <button class="qa-settings-btn-save" id="qaProUpgrade" style="display:none;">업그레이드</button>
         </div>
       </div>
     `;
     document.body.appendChild(overlay);
 
     let selectedPrice = null;
+
+    // "Pro 시작하기" → 플랜 카드 표시
+    qs('#qaProStartBtn', overlay).onclick = () => {
+      qs('#qaProPlanCards', overlay).style.display = '';
+      qs('#qaProStartBtn', overlay).style.display = 'none';
+      qs('#qaProUpgrade', overlay).style.display = '';
+
+      // 미로그인 체크
+      loadGitHubSettings().then(settings => {
+        if (!settings.auth || !settings.auth.username) {
+          qs('#qaProLoginNotice', overlay).style.display = '';
+        }
+      });
+    };
+
     overlay.querySelectorAll('.qa-feedback-pro-card').forEach(card => {
       card.onclick = () => {
         overlay.querySelectorAll('.qa-feedback-pro-card').forEach(c => { c.style.borderColor = '#475569'; });
         card.style.borderColor = '#3b82f6';
         selectedPrice = card.dataset.price;
       };
-    });
-
-    // 미로그인 체크
-    loadGitHubSettings().then(settings => {
-      if (!settings.auth || !settings.auth.username) {
-        qs('#qaProLoginNotice', overlay).style.display = '';
-      }
     });
 
     qs('#qaProCancel', overlay).onclick = () => overlay.remove();
