@@ -2137,26 +2137,11 @@
               </select>
             </div>
           </div>
-          <div style="margin-top:16px;border-top:1px solid #334155;padding-top:12px;">
-            <div id="qaGhPatToggle" style="font-size:12px;color:#94a3b8;cursor:pointer;user-select:none;">\u25B6 토큰 직접 입력</div>
-            <div id="qaGhPatSection" style="display:none;margin-top:10px;">
+          <div id="qaGhManualRepoArea" style="display:none;margin-top:12px;">
+            <div id="qaGhManualToggle" style="font-size:12px;color:#94a3b8;cursor:pointer;user-select:none;">\u25B6 레포 직접 입력</div>
+            <div id="qaGhManualSection" style="display:none;margin-top:8px;">
               <div class="qa-gh-field">
-                <label>GitHub 레포 <span style="color:#64748b;font-weight:400;">(owner/repo 또는 URL)</span></label>
-                <input type="text" id="qaGhRepo" placeholder="owner/repo 또는 GitHub URL" />
-              </div>
-              <div class="qa-gh-field">
-                <label>Personal Access Token</label>
-                <input type="password" id="qaGhToken" placeholder="ghp_..." />
-                <div style="font-size:11px;color:#64748b;margin-top:4px;">
-                  <a href="https://github.com/settings/tokens/new" target="_blank" style="color:#3b82f6;">토큰 발급 →</a>
-                  <span style="margin-left:6px;">Classic → repo 체크</span>
-                </div>
-              </div>
-              <div class="qa-gh-field">
-                <button class="qa-feedback-btn" id="qaGhTest" style="width:100%;justify-content:center;">
-                  <span class="qa-fb-icon">\uD83D\uDD0D</span> 연결 테스트
-                </button>
-                <div id="qaGhTestResult" style="font-size:12px;margin-top:6px;min-height:18px;"></div>
+                <input type="text" id="qaGhManualRepo" placeholder="owner/repo 또는 GitHub URL" />
               </div>
             </div>
           </div>
@@ -2199,6 +2184,7 @@
           </div>
         `;
         repoSection.style.display = '';
+        qs('#qaGhManualRepoArea', overlay).style.display = '';
         loadRepoList(oauthToken);
 
         qs('#qaGhDisconnect', overlay).onclick = async () => {
@@ -2213,6 +2199,7 @@
         };
       } else {
         repoSection.style.display = 'none';
+        qs('#qaGhManualRepoArea', overlay).style.display = 'none';
         authSection.innerHTML = `
           <div class="qa-gh-field">
             <button class="qa-feedback-btn" id="qaGhOAuthBtn" style="width:100%;justify-content:center;background:#24292f;color:#fff;border-radius:8px;padding:12px;">
@@ -2291,85 +2278,50 @@
       };
     }
 
-    // PAT 접이식 토글
-    qs('#qaGhPatToggle', overlay).onclick = () => {
-      const section = qs('#qaGhPatSection', overlay);
+    // 레포 직접 입력 접이식
+    let manualRepo = null;
+    qs('#qaGhManualToggle', overlay).onclick = () => {
+      const section = qs('#qaGhManualSection', overlay);
       const isHidden = section.style.display === 'none';
       section.style.display = isHidden ? '' : 'none';
-      qs('#qaGhPatToggle', overlay).textContent = isHidden ? '\u25BC 토큰 직접 입력' : '\u25B6 토큰 직접 입력';
+      qs('#qaGhManualToggle', overlay).textContent = isHidden ? '\u25BC 레포 직접 입력' : '\u25B6 레포 직접 입력';
     };
 
-    // PAT 연결 테스트
-    let patVerified = false;
-    qs('#qaGhTest', overlay).onclick = async () => {
-      const resultEl = qs('#qaGhTestResult', overlay);
-      const repoVal = qs('#qaGhRepo', overlay).value.trim();
-      const tokenVal = qs('#qaGhToken', overlay).value.trim();
-
-      if (!repoVal || !tokenVal) {
-        resultEl.innerHTML = '<span style="color:#ef4444;">레포와 토큰을 모두 입력하세요.</span>';
-        return;
+    qs('#qaGhManualRepo', overlay).addEventListener('input', () => {
+      const val = qs('#qaGhManualRepo', overlay).value.trim();
+      const parsed = parseRepoInput(val);
+      if (parsed) {
+        manualRepo = parsed;
+        connectionVerified = true;
+        setSaveBtnEnabled(true);
+        // 드롭다운 선택 해제
+        qs('#qaGhRepoSelect', overlay).value = '';
+        selectedRepo = null;
+      } else {
+        manualRepo = null;
+        connectionVerified = false;
+        setSaveBtnEnabled(false);
       }
-      const parsed = parseRepoInput(repoVal);
-      if (!parsed) {
-        resultEl.innerHTML = '<span style="color:#ef4444;">owner/repo 또는 GitHub URL 형식으로 입력하세요.</span>';
-        return;
-      }
-
-      resultEl.innerHTML = '<span style="color:#94a3b8;">테스트 중...</span>';
-      try {
-        const res = await fetch(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}`, {
-          headers: { 'Authorization': `Bearer ${tokenVal}`, 'Accept': 'application/vnd.github.v3+json' }
-        });
-        if (res.ok) {
-          const data = await res.json();
-          resultEl.innerHTML = `<span style="color:#22c55e;">\u2705 연결 성공 — ${escapeHtml(data.full_name)}</span>`;
-          patVerified = true;
-          connectionVerified = true;
-          setSaveBtnEnabled(true);
-        } else if (res.status === 401) {
-          resultEl.innerHTML = '<span style="color:#ef4444;">\u274C 토큰이 유효하지 않습니다.</span>';
-        } else if (res.status === 404) {
-          resultEl.innerHTML = '<span style="color:#ef4444;">\u274C 레포를 찾을 수 없습니다.</span>';
-        } else {
-          resultEl.innerHTML = `<span style="color:#ef4444;">\u274C 오류 (${res.status})</span>`;
-        }
-      } catch(err) {
-        resultEl.innerHTML = '<span style="color:#ef4444;">\u274C 네트워크 오류</span>';
-      }
-    };
-
-    qs('#qaGhRepo', overlay).addEventListener('input', () => { patVerified = false; connectionVerified = false; setSaveBtnEnabled(false); });
-    qs('#qaGhToken', overlay).addEventListener('input', () => { patVerified = false; connectionVerified = false; setSaveBtnEnabled(false); });
+    });
 
     // 저장
     qs('#qaGhSave', overlay).onclick = async () => {
-      if (!connectionVerified) {
-        showToast('먼저 로그인하거나 연결 테스트를 완료하세요.');
+      if (!connectionVerified || !oauthToken) {
+        showToast('먼저 GitHub 로그인 후 레포를 선택하세요.');
         return;
       }
 
       const settings = await loadGitHubSettings();
-      let owner, name, token;
+      let owner, name;
 
-      if (oauthToken && selectedRepo) {
-        // OAuth 방식
+      if (manualRepo) {
+        owner = manualRepo.owner;
+        name = manualRepo.repo;
+      } else if (selectedRepo) {
         owner = selectedRepo.owner;
         name = selectedRepo.name;
-        token = oauthToken;
-      } else if (patVerified) {
-        // PAT 방식
-        const repoVal = qs('#qaGhRepo', overlay).value.trim();
-        const tokenVal = qs('#qaGhToken', overlay).value.trim();
-        const parsed = parseRepoInput(repoVal);
-        if (!parsed || !tokenVal) { showToast('입력값을 확인하세요.'); return; }
-        owner = parsed.owner;
-        name = parsed.repo;
-        token = tokenVal;
-        // PAT auth 저장
-        settings.auth = { method: 'pat', token: tokenVal, username: owner, avatarUrl: '' };
       } else {
-        showToast('로그인 또는 연결 테스트를 먼저 완료하세요.');
+        showToast('레포를 선택하거나 직접 입력하세요.');
         return;
       }
 
