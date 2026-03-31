@@ -211,7 +211,7 @@
     qs('#qaSessionSave').onclick = saveSession;
     qs('#qaSessionLoad').onclick = loadSessionList;
     qs('#qaMarkdownImport').onclick = showMarkdownImport;
-    qs('#qaGitHubSettings').onclick = showGitHubSettings;
+    qs('#qaGitHubSettings').onclick = async () => { if (await requirePro('GitHub 연동')) showGitHubSettings(); };
     qs('#qaGhIssueList').onclick = async () => { if (await requirePro('이슈 현황')) showGitHubIssueList(); };
 
     // GitHub 설정 존재 시 이슈 현황 버튼 표시
