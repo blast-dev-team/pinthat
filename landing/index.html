@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PinThat — 꽂고, 기억하고, 공유하다</title>
+  <meta name="description" content="브라우저에서 바로 QA 피드백을 남기고, GitHub Issue로 자동 전송하세요. 비개발자도 쉽게 쓰는 시각적 QA 도구.">
+  <link rel="icon" type="image/png" href="/asset/fabicon.png">
+  <style>
+    /* ===== Reset & Base ===== */
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Pretendard', sans-serif;
+      color: #1e293b;
+      background: #ffffff;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+    a { text-decoration: none; color: inherit; }
+    img { max-width: 100%; display: block; }
+
+    /* ===== Layout ===== */
+    .container { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
+
+    /* ===== Header ===== */
+    .header {
+      position: fixed; top: 0; left: 0; right: 0;
+      background: rgba(255,255,255,0.92);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid #f1f5f9;
+      z-index: 100;
+    }
+    .header .container {
+      display: flex; align-items: center; justify-content: space-between;
+      height: 64px;
+    }
+    .logo {
+      display: flex; align-items: center; gap: 10px;
+      font-size: 20px; font-weight: 700; color: #1e293b;
+    }
+    .logo img { width: 32px; height: 32px; }
+    .nav { display: flex; align-items: center; gap: 32px; }
+    .nav a {
+      font-size: 14px; font-weight: 500; color: #64748b;
+      transition: color 0.2s;
+    }
+    .nav a:hover { color: #1e293b; }
+    .btn-primary {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 10px 20px;
+      background: #2563eb; color: #fff;
+      border-radius: 8px; font-size: 14px; font-weight: 600;
+      border: none; cursor: pointer;
+      transition: background 0.2s, transform 0.1s;
+    }
+    .btn-primary:hover { background: #1d4ed8; transform: translateY(-1px); }
+    .btn-secondary {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 10px 20px;
+      background: #f8fafc; color: #1e293b;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px; font-size: 14px; font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.1s;
+    }
+    .btn-secondary:hover { background: #f1f5f9; transform: translateY(-1px); }
+
+    /* ===== Hero ===== */
+    .hero {
+      padding: 140px 0 80px;
+      text-align: center;
+    }
+    .hero-badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 6px 14px;
+      background: #eff6ff; color: #2563eb;
+      border-radius: 20px; font-size: 13px; font-weight: 600;
+      margin-bottom: 24px;
+    }
+    .hero h1 {
+      font-size: 52px; font-weight: 800; line-height: 1.15;
+      letter-spacing: -0.02em;
+      color: #0f172a;
+      margin-bottom: 20px;
+    }
+    .hero h1 .accent { color: #2563eb; }
+    .hero h1 .accent-orange { color: #f59e0b; }
+    .hero p {
+      font-size: 18px; color: #64748b; max-width: 560px;
+      margin: 0 auto 36px; line-height: 1.7;
+    }
+    .hero-cta {
+      display: flex; align-items: center; justify-content: center; gap: 12px;
+      margin-bottom: 48px;
+    }
+    .hero-visual {
+      max-width: 900px; margin: 0 auto;
+      border-radius: 16px;
+      box-shadow: 0 25px 60px rgba(0,0,0,0.1), 0 0 0 1px rgba(0,0,0,0.05);
+      overflow: hidden;
+      background: #f8fafc;
+    }
+    .hero-visual img { width: 100%; }
+    .hero-visual-placeholder {
+      width: 100%; aspect-ratio: 16/9;
+      background: linear-gradient(135deg, #eff6ff 0%, #f8fafc 50%, #fef3c7 100%);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 16px; color: #94a3b8;
+    }
+
+    /* ===== Features ===== */
+    .features {
+      padding: 100px 0;
+      background: #f8fafc;
+    }
+    .section-label {
+      font-size: 13px; font-weight: 700; color: #2563eb;
+      text-transform: uppercase; letter-spacing: 0.08em;
+      text-align: center; margin-bottom: 12px;
+    }
+    .section-title {
+      font-size: 36px; font-weight: 800; text-align: center;
+      color: #0f172a; margin-bottom: 16px; letter-spacing: -0.01em;
+    }
+    .section-desc {
+      font-size: 16px; color: #64748b; text-align: center;
+      max-width: 520px; margin: 0 auto 56px;
+    }
+    .features-grid {
+      display: grid; grid-template-columns: repeat(2, 1fr);
+      gap: 24px;
+    }
+    .feature-card {
+      background: #fff;
+      border: 1px solid #e2e8f0;
+      border-radius: 16px;
+      padding: 36px;
+      transition: box-shadow 0.3s, transform 0.2s;
+    }
+    .feature-card:hover {
+      box-shadow: 0 12px 32px rgba(0,0,0,0.06);
+      transform: translateY(-2px);
+    }
+    .feature-icon {
+      width: 48px; height: 48px;
+      background: #eff6ff; border-radius: 12px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 24px; margin-bottom: 20px;
+    }
+    .feature-card h3 {
+      font-size: 18px; font-weight: 700; color: #0f172a;
+      margin-bottom: 10px;
+    }
+    .feature-card p {
+      font-size: 14px; color: #64748b; line-height: 1.7;
+    }
+
+    /* ===== How it works ===== */
+    .how-it-works {
+      padding: 100px 0;
+    }
+    .steps {
+      display: grid; grid-template-columns: repeat(3, 1fr);
+      gap: 40px;
+      margin-top: 56px;
+    }
+    .step {
+      text-align: center;
+      position: relative;
+    }
+    .step-number {
+      width: 56px; height: 56px;
+      background: #2563eb; color: #fff;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 22px; font-weight: 800;
+      margin: 0 auto 20px;
+    }
+    .step h3 {
+      font-size: 18px; font-weight: 700; color: #0f172a;
+      margin-bottom: 10px;
+    }
+    .step p {
+      font-size: 14px; color: #64748b; line-height: 1.7;
+    }
+    .step-arrow {
+      position: absolute; top: 28px; right: -24px;
+      font-size: 20px; color: #cbd5e1;
+    }
+
+    /* ===== Pricing ===== */
+    .pricing {
+      padding: 100px 0;
+      background: #f8fafc;
+    }
+    .pricing-grid {
+      display: grid; grid-template-columns: repeat(2, 1fr);
+      gap: 24px; max-width: 720px; margin: 0 auto;
+    }
+    .pricing-card {
+      background: #fff;
+      border: 1px solid #e2e8f0;
+      border-radius: 16px;
+      padding: 40px 32px;
+      text-align: center;
+      position: relative;
+    }
+    .pricing-card.popular {
+      border-color: #2563eb;
+      box-shadow: 0 8px 32px rgba(37,99,235,0.12);
+    }
+    .pricing-card.popular::before {
+      content: 'POPULAR';
+      position: absolute; top: -12px; left: 50%; transform: translateX(-50%);
+      background: #2563eb; color: #fff;
+      padding: 4px 16px; border-radius: 12px;
+      font-size: 11px; font-weight: 700; letter-spacing: 0.06em;
+    }
+    .pricing-card h3 {
+      font-size: 20px; font-weight: 700; color: #0f172a;
+      margin-bottom: 8px;
+    }
+    .pricing-card .price {
+      font-size: 40px; font-weight: 800; color: #0f172a;
+      margin-bottom: 4px;
+    }
+    .pricing-card .price span { font-size: 16px; font-weight: 500; color: #94a3b8; }
+    .pricing-card .price-sub {
+      font-size: 13px; color: #94a3b8; margin-bottom: 28px;
+    }
+    .pricing-card ul {
+      list-style: none; text-align: left;
+      margin-bottom: 32px;
+    }
+    .pricing-card li {
+      font-size: 14px; color: #475569;
+      padding: 8px 0;
+      display: flex; align-items: flex-start; gap: 10px;
+    }
+    .pricing-card li::before {
+      content: '✓'; color: #22c55e; font-weight: 700;
+      flex-shrink: 0;
+    }
+    .pricing-card li.disabled { color: #cbd5e1; }
+    .pricing-card li.disabled::before { content: '—'; color: #cbd5e1; }
+    .pricing-card .btn-primary { width: 100%; justify-content: center; }
+    .pricing-card .btn-secondary { width: 100%; justify-content: center; }
+
+    /* ===== CTA ===== */
+    .cta-section {
+      padding: 100px 0;
+      text-align: center;
+    }
+    .cta-section h2 {
+      font-size: 36px; font-weight: 800; color: #0f172a;
+      margin-bottom: 16px;
+    }
+    .cta-section p {
+      font-size: 16px; color: #64748b;
+      max-width: 480px; margin: 0 auto 32px;
+    }
+
+    /* ===== Footer ===== */
+    .footer {
+      padding: 40px 0;
+      border-top: 1px solid #f1f5f9;
+    }
+    .footer .container {
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .footer-left {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 13px; color: #94a3b8;
+    }
+    .footer-left img { width: 20px; height: 20px; }
+    .footer-links {
+      display: flex; gap: 24px;
+    }
+    .footer-links a {
+      font-size: 13px; color: #94a3b8;
+      transition: color 0.2s;
+    }
+    .footer-links a:hover { color: #64748b; }
+
+    /* ===== Responsive ===== */
+    @media (max-width: 768px) {
+      .hero h1 { font-size: 32px; }
+      .hero p { font-size: 16px; }
+      .features-grid { grid-template-columns: 1fr; }
+      .steps { grid-template-columns: 1fr; gap: 32px; }
+      .step-arrow { display: none; }
+      .pricing-grid { grid-template-columns: 1fr; }
+      .nav { display: none; }
+      .section-title { font-size: 28px; }
+      .footer .container { flex-direction: column; gap: 16px; }
+    }
+
+    /* ===== Animations ===== */
+    .fade-in {
+      opacity: 0; transform: translateY(20px);
+      transition: opacity 0.6s ease, transform 0.6s ease;
+    }
+    .fade-in.visible {
+      opacity: 1; transform: translateY(0);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <header class="header">
+    <div class="container">
+      <a href="/" class="logo">
+        <img src="/asset/extension_icon.png" alt="PinThat">
+        PinThat
+      </a>
+      <nav class="nav">
+        <a href="#features">Features</a>
+        <a href="#how-it-works">How it works</a>
+        <a href="#pricing">Pricing</a>
+        <a href="/privacy.html">Privacy</a>
+        <a href="#install" class="btn-primary">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1.5"/><circle cx="8" cy="8" r="3" fill="currentColor"/></svg>
+          Install Free
+        </a>
+      </nav>
+    </div>
+  </header>
+
+  <!-- Hero -->
+  <section class="hero">
+    <div class="container">
+      <div class="hero-badge">📌 Chrome Extension — 무료 설치</div>
+      <h1>
+        브라우저에서 바로<br>
+        <span class="accent">QA 피드백</span>을 <span class="accent-orange">꽂다</span>
+      </h1>
+      <p>
+        UI 요소를 클릭하고, 피드백을 남기고, GitHub Issue로 자동 전송하세요.<br>
+        비개발자도 쉽게 쓰는 시각적 QA 도구.
+      </p>
+      <div class="hero-cta">
+        <a href="#install" class="btn-primary" style="padding:14px 28px; font-size:16px;">
+          <svg width="18" height="18" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1.5"/><circle cx="8" cy="8" r="3" fill="currentColor"/></svg>
+          Chrome에 추가하기
+        </a>
+        <a href="#how-it-works" class="btn-secondary" style="padding:14px 28px; font-size:16px;">
+          사용법 보기 →
+        </a>
+      </div>
+      <div class="hero-visual fade-in">
+        <div class="hero-visual-placeholder">
+          📸 PinThat 사용 스크린샷 / 데모 GIF 들어갈 자리
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Features -->
+  <section class="features" id="features">
+    <div class="container">
+      <div class="section-label">Features</div>
+      <h2 class="section-title">QA를 더 빠르고, 더 정확하게</h2>
+      <p class="section-desc">
+        스크린샷 찍고 문서 작성하는 시간은 끝. 브라우저 위에서 바로 핀을 꽂으세요.
+      </p>
+      <div class="features-grid">
+        <div class="feature-card fade-in">
+          <div class="feature-icon">📌</div>
+          <h3>클릭 한 번으로 피드백</h3>
+          <p>UI 요소를 클릭하면 바로 피드백 입력창이 뜹니다. 셀렉터, 위치, 텍스트를 자동 캡처하니 "어디 말하는 거예요?"는 이제 없어요.</p>
+        </div>
+        <div class="feature-card fade-in">
+          <div class="feature-icon">🔀</div>
+          <h3>위치 이동 피드백</h3>
+          <p>"이 버튼 왼쪽으로 옮겨줘" — 방향 지정부터, 화면 아무 곳 클릭으로 목적지를 찍는 자유 이동까지. 개발자가 바로 이해하는 포맷.</p>
+        </div>
+        <div class="feature-card fade-in">
+          <div class="feature-icon">🐙</div>
+          <h3>GitHub Issue 자동 전송</h3>
+          <p>피드백을 GitHub Issue로 바로 보내세요. 제목 지정, 선택/전체 전송, 라벨 자동 부여. 복사-붙여넣기는 이제 안녕.</p>
+        </div>
+        <div class="feature-card fade-in">
+          <div class="feature-icon">🔄</div>
+          <h3>재검수 워크플로우</h3>
+          <p>이슈 현황에서 Closed된 이슈를 재검수. 안 고쳐졌으면 한 클릭으로 Reopen + 코멘트까지. 완벽한 QA 사이클.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- How it works -->
+  <section class="how-it-works" id="how-it-works">
+    <div class="container">
+      <div class="section-label">How it works</div>
+      <h2 class="section-title">3단계로 끝나는 QA</h2>
+      <p class="section-desc">
+        설치하고, 꽂고, 보내세요. 그게 전부입니다.
+      </p>
+      <div class="steps">
+        <div class="step fade-in">
+          <div class="step-number">1</div>
+          <h3>핀 꽂기</h3>
+          <p>QA 모드를 켜고 문제 있는 요소를 클릭하세요. UI, 기능, 텍스트, 위치 이동 중 유형을 선택합니다.</p>
+          <span class="step-arrow">→</span>
+        </div>
+        <div class="step fade-in">
+          <div class="step-number">2</div>
+          <h3>피드백 작성</h3>
+          <p>무엇을 바꿔야 하는지 적으세요. 요소의 위치, 텍스트, 셀렉터는 자동으로 기록됩니다.</p>
+          <span class="step-arrow">→</span>
+        </div>
+        <div class="step fade-in">
+          <div class="step-number">3</div>
+          <h3>GitHub 전송</h3>
+          <p>피드백을 GitHub Issue로 한 번에 전송하세요. 개발자는 Issue에서 바로 작업을 시작할 수 있습니다.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Pricing -->
+  <section class="pricing" id="pricing">
+    <div class="container">
+      <div class="section-label">Pricing</div>
+      <h2 class="section-title">심플한 가격, 강력한 기능</h2>
+      <p class="section-desc">
+        기본 QA 기능은 무료. GitHub 연동이 필요하면 Pro로.
+      </p>
+      <div class="pricing-grid">
+        <div class="pricing-card">
+          <h3>Free</h3>
+          <div class="price">$0</div>
+          <div class="price-sub">영원히 무료</div>
+          <ul>
+            <li>요소 선택 + 피드백 입력</li>
+            <li>UI / 기능 / 텍스트 / 위치이동 유형</li>
+            <li>마크다운 출력 + 복사</li>
+            <li>세션 저장 / 불러오기</li>
+            <li>재검수 모드</li>
+            <li class="disabled">GitHub Issue 자동 전송</li>
+            <li class="disabled">이슈 현황 + 재검수 워크플로우</li>
+          </ul>
+          <a href="#install" class="btn-secondary">무료로 시작하기</a>
+        </div>
+        <div class="pricing-card popular">
+          <h3>Pro</h3>
+          <div class="price">$4.98<span>/월</span></div>
+          <div class="price-sub">또는 $19.98 영구 라이선스</div>
+          <ul>
+            <li>Free의 모든 기능</li>
+            <li>GitHub Issue 자동 전송</li>
+            <li>레포 무제한 연동</li>
+            <li>이슈 현황 실시간 조회</li>
+            <li>재검수 → Reopen 워크플로우</li>
+            <li>이슈 아카이브</li>
+            <li>우선 지원</li>
+          </ul>
+          <div class="pricing-pro-buttons" style="display:flex;gap:8px;margin-top:auto;">
+            <button onclick="startCheckout('price_1TGyk6DYzHZgHbYuaa7l4brX')" class="btn-primary" style="flex:1;justify-content:center;font-size:13px;">$4.98/월</button>
+            <button onclick="startCheckout('price_1TGynHDYzHZgHbYuoGARymvh')" class="btn-secondary" style="flex:1;justify-content:center;font-size:13px;">$19.98 영구</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA -->
+  <section class="cta-section" id="install">
+    <div class="container">
+      <h2>QA, 이제 핀 하나로 끝내세요</h2>
+      <p>
+        꽂고, 기억하고, 공유하다.<br>
+        PinThat으로 QA 워크플로우를 바꿔보세요.
+      </p>
+      <a href="#" class="btn-primary" style="padding:16px 32px; font-size:16px;">
+        <svg width="18" height="18" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1.5"/><circle cx="8" cy="8" r="3" fill="currentColor"/></svg>
+        Chrome 웹스토어에서 설치
+      </a>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-left">
+        <img src="/asset/fabicon.png" alt="PinThat">
+        © 2026 PinThat. All rights reserved.
+      </div>
+      <div class="footer-links">
+        <a href="/privacy.html">Privacy Policy</a>
+        <a href="https://github.com/Leeyeonjin2001" target="_blank">GitHub</a>
+        <a href="mailto:el.lee@blast-team.com">Contact</a>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Scroll Animation -->
+  <script>
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('visible');
+        }
+      });
+    }, { threshold: 0.1 });
+
+    document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
+  </script>
+
+  <!-- Stripe Checkout -->
+  <script>
+    const WORKER_URL = 'https://pinthat-auth.el-lee.workers.dev';
+
+    function getUsername() {
+      const params = new URLSearchParams(window.location.search);
+      return params.get('username') || '';
+    }
+
+    async function startCheckout(priceId) {
+      const username = getUsername();
+      if (!username) {
+        alert('먼저 PinThat Extension에서 GitHub 로그인 후,\nExtension의 업그레이드 버튼을 이용해주세요.');
+        return;
+      }
+
+      const btn = event.target;
+      const originalText = btn.textContent;
+      btn.textContent = '처리 중...';
+      btn.disabled = true;
+
+      try {
+        const res = await fetch(`${WORKER_URL}/create-checkout`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            username: username,
+            priceId: priceId,
+            successUrl: window.location.origin + '/landing/success.html?username=' + encodeURIComponent(username),
+            cancelUrl: window.location.href,
+          })
+        });
+        const data = await res.json();
+        if (data.url) {
+          window.location.href = data.url;
+        } else {
+          alert(data.error || '결제 페이지를 열 수 없습니다.');
+          btn.textContent = originalText;
+          btn.disabled = false;
+        }
+      } catch {
+        alert('네트워크 오류가 발생했습니다.');
+        btn.textContent = originalText;
+        btn.disabled = false;
+      }
+    }
+  </script>
+
+</body>
+</html>
