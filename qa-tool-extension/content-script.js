@@ -301,12 +301,12 @@
 
   /* ===== Event Handlers ===== */
   function isQaElement(el) {
-    return el && (el.closest('.qa-feedback-panel') || el.closest('.qa-feedback-popup') || el.closest('.qa-feedback-review-popup') || el.closest('.qa-feedback-output-overlay') || el.closest('.qa-settings-overlay') || el.closest('.qa-feedback-move-guide') || el.classList.contains('qa-feedback-hover-overlay') || el.classList.contains('qa-feedback-selected-overlay') || el.classList.contains('qa-feedback-number-badge') || el.classList.contains('qa-feedback-review-overlay') || el.classList.contains('qa-feedback-review-badge') || el.classList.contains('qa-feedback-move-source-overlay') || el.classList.contains('qa-feedback-toast'));
+    return el && (el.closest('.qa-feedback-panel') || el.closest('.qa-feedback-popup') || el.closest('.qa-feedback-review-popup') || el.closest('.qa-feedback-output-overlay') || el.closest('.qa-settings-overlay') || el.closest('.qa-feedback-move-guide') || el.classList.contains('qa-feedback-hover-overlay') || el.classList.contains('qa-feedback-selected-overlay') || el.classList.contains('qa-feedback-number-badge') || el.classList.contains('qa-feedback-review-overlay') || el.classList.contains('qa-feedback-review-badge') || el.classList.contains('qa-feedback-move-source-overlay') || el.classList.contains('qa-feedback-move-marker') || el.classList.contains('qa-feedback-toast'));
   }
 
   function onMouseMove(e) {
     if (!hoverOverlay) return;
-    if (!STATE.active || STATE.mode !== 'element' || isQaElement(e.target)) {
+    if (!STATE.active || STATE.mode !== 'element' || STATE.moveMode || isQaElement(e.target)) {
       hoverOverlay.style.display = 'none';
       return;
     }
@@ -320,16 +320,20 @@
 
   function onClick(e) {
     if (!hoverOverlay) return;
-    if (!STATE.active || isQaElement(e.target)) return;
+    if (!STATE.active) return;
+    if (STATE.moveMode) {
+      if (isQaElement(e.target)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      handleFreeMoveDest(e);
+      return;
+    }
+    if (isQaElement(e.target)) return;
     if (STATE.mode === 'element') {
       e.preventDefault();
       e.stopPropagation();
       hoverOverlay.style.display = 'none';
-      if (STATE.moveMode) {
-        handleMoveDestination(e.target);
-      } else {
-        showTypeSelectionPopup(e.target, e.shiftKey);
-      }
+      showTypeSelectionPopup(e.target, e.shiftKey);
     }
   }
 
@@ -668,16 +672,17 @@
     });
   }
 
-  /* --- B. 자유 위치 이동 --- */
+  /* --- B. 자유 위치 이동 (좌표 기반) --- */
   function enterFreeMoveMode(sourceEl, sourceInfo) {
     STATE.moveMode = true;
     STATE.moveSource = { el: sourceEl, info: sourceInfo };
 
     addMoveSourceOverlay(sourceEl);
+    document.body.style.cursor = 'crosshair';
 
     moveGuide = ce('div', 'qa-feedback-move-guide');
     moveGuide.innerHTML = `
-      <span>\uD83D\uDCCD 목적지 요소를 클릭하세요 — 출발: <code>${truncate(sourceInfo.selector, 40)}</code> (${sourceInfo.tagName})</span>
+      <span>\uD83D\uDCCD 목적지 위치를 클릭하세요 — 출발: <code>${truncate(sourceInfo.selector, 40)}</code> (${sourceInfo.tagName})</span>
       <button class="qa-feedback-move-guide-cancel">취소</button>
     `;
     document.body.appendChild(moveGuide);
@@ -692,7 +697,8 @@
     STATE.moveMode = false;
     STATE.moveSource = null;
     if (moveGuide) { moveGuide.remove(); moveGuide = null; }
-    document.querySelectorAll('.qa-feedback-move-source-overlay').forEach(e => e.remove());
+    document.querySelectorAll('.qa-feedback-move-source-overlay, .qa-feedback-move-marker').forEach(e => e.remove());
+    document.body.style.cursor = STATE.active ? 'pointer' : '';
   }
 
   function addMoveSourceOverlay(el) {
@@ -705,22 +711,35 @@
     document.body.appendChild(ov);
   }
 
-  function handleMoveDestination(destEl) {
+  function handleFreeMoveDest(e) {
     if (!STATE.moveSource) return;
-    const destInfo = captureElement(destEl);
     const sourceInfo = STATE.moveSource.info;
     const sourceEl = STATE.moveSource.el;
 
-    addMoveSourceOverlay(destEl);
+    const destX = e.pageX;
+    const destY = e.pageY;
+    const nearestEl = document.elementFromPoint(e.clientX, e.clientY);
+    const nearestSelector = (nearestEl && !isQaElement(nearestEl)) ? getSelector(nearestEl) : '';
+
+    // 목적지 마커 표시
+    addFreeMovMarker(destX, destY);
     if (moveGuide) { moveGuide.remove(); moveGuide = null; }
 
-    showFreeMoveMemoPopup(sourceEl, sourceInfo, destInfo);
+    showFreeMoveMemoPopup(sourceEl, sourceInfo, destX, destY, nearestSelector);
   }
 
-  function showFreeMoveMemoPopup(sourceEl, sourceInfo, destInfo) {
+  function addFreeMovMarker(x, y) {
+    const marker = ce('div', 'qa-feedback-move-marker');
+    marker.style.left = (x - 6) + 'px';
+    marker.style.top = (y - 6) + 'px';
+    document.body.appendChild(marker);
+  }
+
+  function showFreeMoveMemoPopup(sourceEl, sourceInfo, destX, destY, nearestSelector) {
     if (currentPopup) currentPopup.remove();
 
-    const autoFeedback = `자유 이동: ${sourceInfo.selector} → ${destInfo.selector}`;
+    const destDesc = nearestSelector ? `${nearestSelector} 근처` : `(${destX}, ${destY})`;
+    const autoFeedback = `자유 이동: ${sourceInfo.selector} → ${destDesc}`;
     const popup = ce('div', 'qa-feedback-popup');
 
     const r = sourceEl.getBoundingClientRect();
@@ -735,10 +754,10 @@
       <div class="qa-feedback-popup-header">
         <div style="margin-bottom:4px;"><span class="qa-feedback-type-label">\uD83D\uDD00 자유 위치 이동</span></div>
         <div style="font-size:12px;color:#64748b;margin-top:4px;">출발: <code>${truncate(sourceInfo.selector, 30)}</code></div>
-        <div style="font-size:12px;color:#64748b;margin-top:2px;">목적지: <code>${truncate(destInfo.selector, 30)}</code></div>
+        <div style="font-size:12px;color:#64748b;margin-top:2px;">목적지: ${destDesc} (${destX}, ${destY})</div>
       </div>
       <div class="qa-feedback-popup-body">
-        <textarea placeholder="이동 방법을 자유롭게 설명하세요..." id="qaMoveMemo" autofocus></textarea>
+        <textarea placeholder="예: 사이드바 아래로 옮겨주세요" id="qaMoveMemo" autofocus></textarea>
       </div>
       <div class="qa-feedback-popup-footer">
         <button class="qa-fb-cancel" id="qaMoveMemoCancel">취소</button>
@@ -759,6 +778,7 @@
 
     qs('#qaMoveMemoSave', popup).onclick = () => {
       const memo = qs('#qaMoveMemo', popup).value.trim();
+      if (!memo) showToast('자유 이동은 메모를 입력해주세요.');
       const fullFeedback = memo ? autoFeedback + ' — ' + memo : autoFeedback;
 
       const entry = {
@@ -776,8 +796,10 @@
         moveType: 'free',
         moveDirection: null,
         moveTarget: {
-          selector: destInfo.selector,
-          tagName: destInfo.tagName,
+          x: destX,
+          y: destY,
+          nearestSelector: nearestSelector,
+          description: destDesc,
         },
       };
 
@@ -813,19 +835,13 @@
     ov.appendChild(badge);
     document.body.appendChild(ov);
 
-    // 자유 이동: 목적지 요소도 하이라이트
-    if (fb && fb.moveType === 'free' && fb.moveTarget && fb.moveTarget.selector) {
-      const destEl = document.querySelector(fb.moveTarget.selector);
-      if (destEl) {
-        const dr = destEl.getBoundingClientRect();
-        const dov = ce('div', 'qa-feedback-selected-overlay qa-feedback-move-dest-overlay');
-        dov.style.left = (dr.left + window.scrollX) + 'px';
-        dov.style.top = (dr.top + window.scrollY) + 'px';
-        dov.style.width = dr.width + 'px';
-        dov.style.height = dr.height + 'px';
-        dov.dataset.qaId = id;
-        document.body.appendChild(dov);
-      }
+    // 자유 이동: 목적지 좌표에 마커 표시
+    if (fb && fb.moveType === 'free' && fb.moveTarget && fb.moveTarget.x != null) {
+      const marker = ce('div', 'qa-feedback-move-marker');
+      marker.style.left = (fb.moveTarget.x - 6) + 'px';
+      marker.style.top = (fb.moveTarget.y - 6) + 'px';
+      marker.dataset.qaId = id;
+      document.body.appendChild(marker);
     }
   }
 
@@ -930,7 +946,8 @@
           md += `- **\uBC29\uD5A5**: ${dirLabels[fb.moveDirection] || fb.moveDirection}\n`;
         } else if (fb.moveType === 'free' && fb.moveTarget) {
           md += `- **\uC774\uB3D9 \uBC29\uC2DD**: 자유 위치 이동\n`;
-          md += `- **\uC774\uB3D9 \uBAA9\uC801\uC9C0**: \`${fb.moveTarget.selector}\`\n`;
+          const destDesc = fb.moveTarget.description || (fb.moveTarget.nearestSelector ? fb.moveTarget.nearestSelector + ' 근처' : `(${fb.moveTarget.x}, ${fb.moveTarget.y})`);
+          md += `- **\uC774\uB3D9 \uBAA9\uC801\uC9C0**: ${destDesc} (${fb.moveTarget.x}, ${fb.moveTarget.y})\n`;
         }
         if (memo) md += `- **\uBA54\uBAA8**: ${memo}\n`;
       } else {
@@ -1148,7 +1165,7 @@
     STATE.feedbacks = [];
     STATE.nextId = 1;
     await chrome.storage.local.remove(getStorageKey());
-    document.querySelectorAll('.qa-feedback-selected-overlay, .qa-feedback-number-badge').forEach(e => e.remove());
+    document.querySelectorAll('.qa-feedback-selected-overlay, .qa-feedback-number-badge, .qa-feedback-move-marker').forEach(e => e.remove());
     if (currentPopup) { currentPopup.remove(); currentPopup = null; }
     document.querySelectorAll('.qa-feedback-output-overlay').forEach(e => e.remove());
     hoverOverlay.style.display = 'none';
