@@ -328,6 +328,12 @@
     const header = popup.querySelector('.qa-feedback-popup-header') || popup.querySelector('.qa-feedback-review-popup-header');
     if (!header) return;
     let dragging = false, offX = 0, offY = 0;
+    const onMove = (e) => {
+      if (!dragging) return;
+      popup.style.left = Math.max(0, e.clientX - offX) + 'px';
+      popup.style.top = Math.max(0, e.clientY - offY) + 'px';
+    };
+    const onUp = () => { dragging = false; };
     header.addEventListener('mousedown', e => {
       dragging = true;
       const rect = popup.getBoundingClientRect();
@@ -335,12 +341,17 @@
       offY = e.clientY - rect.top;
       e.preventDefault();
     });
-    document.addEventListener('mousemove', e => {
-      if (!dragging) return;
-      popup.style.left = Math.max(0, e.clientX - offX) + 'px';
-      popup.style.top = Math.max(0, e.clientY - offY) + 'px';
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+    // 팝업 제거 시 리스너 정리
+    const obs = new MutationObserver(() => {
+      if (!popup.isConnected) {
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+        obs.disconnect();
+      }
     });
-    document.addEventListener('mouseup', () => { dragging = false; });
+    obs.observe(popup.parentNode || document.body, { childList: true });
   }
 
   /* ===== Feedback Popup ===== */
