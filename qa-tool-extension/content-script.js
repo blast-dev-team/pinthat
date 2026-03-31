@@ -990,14 +990,20 @@
 
     // GitHub Issue 버튼 상태
     const ghIssueBtn = qs('#qaGhIssueBtn', overlay);
-    getGitHubMapping().then(mapping => {
+    (async () => {
+      const mapping = await getGitHubMapping();
+      const plan = await checkUserPlan();
       if (mapping) {
         ghIssueBtn.disabled = false;
+        if (plan !== 'pro') {
+          ghIssueBtn.textContent = '\uD83D\uDD12 GitHub Issue (Pro)';
+          ghIssueBtn.style.opacity = '0.7';
+        }
         ghIssueBtn.title = `${mapping.repoOwner}/${mapping.repoName}에 Issue 생성`;
       } else {
-        ghIssueBtn.title = 'GitHub 설정 필요 — 패널에서 🔗 GitHub 설정을 먼저 연결하세요';
+        ghIssueBtn.title = 'GitHub 설정 필요 — 패널에서 \uD83D\uDD17 GitHub 설정을 먼저 연결하세요';
       }
-    });
+    })();
 
     ghIssueBtn.onclick = async () => {
       if (ghIssueBtn.disabled) return;
@@ -2125,6 +2131,7 @@
           <h3>\uD83D\uDD17 GitHub 연동 설정</h3>
         </div>
         <div class="qa-settings-modal-body" id="qaGhSettingsBody" style="overflow-y:auto;flex:1;">
+          <div id="qaGhPlanBanner" style="padding:8px 12px;border-radius:8px;font-size:12px;margin-bottom:12px;display:none;"></div>
           <div id="qaGhAuthSection"></div>
           <div id="qaGhRepoSection" style="display:none;">
             <div class="qa-gh-field">
@@ -2342,6 +2349,25 @@
     setTimeout(() => {
       overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
     }, 100);
+
+    // 플랜 상태 표시
+    checkUserPlan().then(plan => {
+      const banner = qs('#qaGhPlanBanner', overlay);
+      banner.style.display = '';
+      if (plan === 'pro') {
+        banner.style.background = '#0f172a';
+        banner.style.color = '#22c55e';
+        banner.innerHTML = '\u2B50 현재 플랜: <strong>Pro</strong>';
+      } else {
+        banner.style.background = '#0f172a';
+        banner.style.color = '#94a3b8';
+        banner.innerHTML = '현재 플랜: Free &nbsp;<a id="qaGhUpgradeLink" href="#" style="color:#3b82f6;font-size:12px;">Pro로 업그레이드</a>';
+        setTimeout(() => {
+          const link = qs('#qaGhUpgradeLink', overlay);
+          if (link) link.onclick = (e) => { e.preventDefault(); overlay.remove(); showProModal('GitHub 연동'); };
+        }, 0);
+      }
+    });
 
     renderAuthSection();
   }
