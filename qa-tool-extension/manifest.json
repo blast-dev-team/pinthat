@@ -4,6 +4,7 @@
   "version": "3.0.0",
   "description": "Visual QA feedback tool for web projects",
   "permissions": ["activeTab", "storage", "clipboardWrite"],
+  "host_permissions": ["https://api.github.com/*"],
   "content_scripts": [
     {
       "matches": ["http://*/*", "https://*/*"],

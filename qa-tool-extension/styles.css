@@ -134,6 +134,13 @@
 .qa-feedback-move-option-btn { padding:10px 12px; border-radius:8px; font-size:13px; font-weight:500; border:1px solid #e2e8f0; background:#fff; cursor:pointer; color:#475569; text-align:center; transition:all .15s; }
 .qa-feedback-move-option-btn:hover { background:#f5f3ff; border-color:#7c3aed; color:#7c3aed; }
 
+/* GitHub settings */
+.qa-gh-field { margin-bottom:14px; }
+.qa-gh-field label { display:block; font-size:12px; font-weight:600; color:#94a3b8; margin-bottom:4px; }
+.qa-gh-field input[type="text"], .qa-gh-field input[type="password"] { width:100%; padding:10px; border:1px solid #475569; border-radius:8px; background:#0f172a; color:#e2e8f0; font-size:13px; outline:none; box-sizing:border-box; }
+.qa-gh-field input:focus { border-color:#3b82f6; }
+.qa-gh-origin { font-size:13px; color:#e2e8f0; padding:8px 10px; background:#0f172a; border-radius:6px; border:1px solid #334155; }
+
 /* Mobile */
 @media(max-width:480px) {
   .qa-feedback-popup { width:calc(100vw - 24px); left:12px!important; }

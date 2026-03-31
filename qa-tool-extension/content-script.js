@@ -192,6 +192,9 @@
           <button class="qa-feedback-btn" id="qaSettingsToggle">
             <span class="qa-fb-icon">\u2699\uFE0F</span> 단축키 설정
           </button>
+          <button class="qa-feedback-btn" id="qaGitHubSettings">
+            <span class="qa-fb-icon">\uD83D\uDD17</span> GitHub 설정
+          </button>
         </div>
       </div>
     `;
@@ -210,6 +213,7 @@
     qs('#qaSessionSave').onclick = saveSession;
     qs('#qaSessionLoad').onclick = loadSessionList;
     qs('#qaMarkdownImport').onclick = showMarkdownImport;
+    qs('#qaGitHubSettings').onclick = showGitHubSettings;
 
     initPanelDrag();
   }
@@ -1024,6 +1028,7 @@
         <div class="qa-feedback-output-actions">
           <button style="background:#f1f5f9;color:#475569;" onclick="this.closest('.qa-feedback-output-overlay').remove()">\uB2EB\uAE30</button>
           <button style="background:#1e293b;color:#fff;" id="qaCopyBtn">\uD074\uB9BD\uBCF4\uB4DC \uBCF5\uC0AC</button>
+          <button style="background:#24292f;color:#fff;" id="qaGhIssueBtn" disabled>\uD83D\uDD17 GitHub Issue</button>
         </div>
       </div>
     `;
@@ -1077,6 +1082,52 @@
         qs('#qaCopyBtn', overlay).textContent = '\uBCF5\uC0AC \uC644\uB8CC!';
         setTimeout(() => { qs('#qaCopyBtn', overlay).textContent = '\uD074\uB9BD\uBCF4\uB4DC \uBCF5\uC0AC'; }, 1500);
       });
+    };
+
+    // GitHub Issue 버튼 상태
+    const ghIssueBtn = qs('#qaGhIssueBtn', overlay);
+    getGitHubMapping().then(mapping => {
+      if (mapping) {
+        ghIssueBtn.disabled = false;
+        ghIssueBtn.title = `${mapping.repoOwner}/${mapping.repoName}에 Issue 생성`;
+      } else {
+        ghIssueBtn.title = 'GitHub 설정 필요 — 패널에서 🔗 GitHub 설정을 먼저 연결하세요';
+      }
+    });
+
+    ghIssueBtn.onclick = async () => {
+      if (ghIssueBtn.disabled) return;
+
+      // 중복 전송 경고
+      const lastIssue = await getLastIssueHistory();
+      if (lastIssue) {
+        if (!confirm(`이미 Issue #${lastIssue.issueNumber}으로 전송되었습니다.\n새로 생성하시겠습니까?`)) return;
+      }
+
+      ghIssueBtn.disabled = true;
+      ghIssueBtn.textContent = '전송 중...';
+
+      const markdownContent = pre.textContent;
+      const type = STATE.reviewMode ? 'review-resend' : 'initial';
+      const result = await createGitHubIssue(markdownContent, STATE.feedbacks.length);
+
+      if (result) {
+        await recordIssueHistory(result, type);
+        ghIssueBtn.textContent = `✅ Issue #${result.number}`;
+        ghIssueBtn.style.background = '#22c55e';
+        showToast(`✅ Issue #${result.number} 생성 완료 (피드백 ${STATE.feedbacks.length}건)`);
+
+        // Issue URL 링크 추가
+        setTimeout(() => {
+          ghIssueBtn.textContent = `Issue #${result.number} 열기`;
+          ghIssueBtn.style.background = '#24292f';
+          ghIssueBtn.disabled = false;
+          ghIssueBtn.onclick = () => window.open(result.url, '_blank');
+        }, 2000);
+      } else {
+        ghIssueBtn.disabled = false;
+        ghIssueBtn.textContent = '\uD83D\uDD17 GitHub Issue';
+      }
     };
 
     overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
@@ -1209,11 +1260,13 @@
         const count = s.feedbacks ? s.feedbacks.length : 0;
         const statusColors = { open: '#22c55e', reviewing: '#f59e0b', closed: '#64748b' };
         const statusColor = statusColors[s.status] || '#64748b';
+        const issueInfo = (s.issueHistory && s.issueHistory.length > 0) ? s.issueHistory[s.issueHistory.length - 1] : null;
+        const issueTag = issueInfo ? ` → <a href="${issueInfo.issueUrl}" target="_blank" style="color:#3b82f6;text-decoration:none;">Issue #${issueInfo.issueNumber}</a> 전송됨` : '';
         return `
           <div style="padding:12px 0;border-bottom:1px solid #334155;">
             <div style="font-size:14px;font-weight:600;color:#e2e8f0;margin-bottom:4px;">\u25B8 ${s.name}</div>
             <div style="font-size:12px;color:#64748b;margin-bottom:8px;">
-              ${count}\uAC74 \u00B7 ${date} \u00B7 <span style="color:${statusColor}">${s.status}</span>
+              ${count}\uAC74 \u00B7 ${date} \u00B7 <span style="color:${statusColor}">${s.status}</span>${issueTag}
             </div>
             <div style="display:flex;gap:6px;">
               <button class="qa-settings-change qa-session-load" data-idx="${i}" style="border-color:#3b82f6;color:#3b82f6;">\uBD88\uB7EC\uC624\uAE30</button>
@@ -2032,6 +2085,258 @@
       loadSessionList();
     }
   });
+
+  /* ===== GitHub Integration ===== */
+  const GH_SETTINGS_KEY = 'qa-github-settings';
+
+  async function loadGitHubSettings() {
+    try {
+      const result = await chrome.storage.local.get(GH_SETTINGS_KEY);
+      return result[GH_SETTINGS_KEY] || { mappings: [] };
+    } catch(e) { return { mappings: [] }; }
+  }
+
+  async function saveGitHubSettings(settings) {
+    await chrome.storage.local.set({ [GH_SETTINGS_KEY]: settings });
+  }
+
+  async function getGitHubMapping() {
+    const settings = await loadGitHubSettings();
+    const origin = location.origin;
+    return settings.mappings.find(m => {
+      if (m.matchMode === 'exact') return m.urlPattern === origin;
+      return origin.includes(m.urlPattern);
+    }) || null;
+  }
+
+  function showGitHubSettings() {
+    const overlay = ce('div', 'qa-settings-overlay');
+
+    overlay.innerHTML = `
+      <div class="qa-settings-modal" style="width:420px;">
+        <div class="qa-settings-modal-header">
+          <h3>\uD83D\uDD17 GitHub 연동 설정</h3>
+        </div>
+        <div class="qa-settings-modal-body" id="qaGhSettingsBody">
+          <div class="qa-gh-field">
+            <label>현재 사이트</label>
+            <div class="qa-gh-origin">${location.origin}</div>
+          </div>
+          <div class="qa-gh-field">
+            <label>GitHub 레포 <span style="color:#64748b;font-weight:400;">(owner/repo)</span></label>
+            <input type="text" id="qaGhRepo" placeholder="예: Leeyeonjin2001/my-project" />
+          </div>
+          <div class="qa-gh-field">
+            <label>Personal Access Token</label>
+            <input type="password" id="qaGhToken" placeholder="ghp_..." />
+            <div style="font-size:11px;color:#64748b;margin-top:4px;">
+              <a href="https://github.com/settings/tokens" target="_blank" style="color:#3b82f6;">토큰 발급 방법 →</a>
+              <span style="margin-left:8px;">repo 또는 public_repo 권한만 필요합니다</span>
+            </div>
+          </div>
+          <div class="qa-gh-field">
+            <button class="qa-feedback-btn" id="qaGhTest" style="width:100%;justify-content:center;">
+              <span class="qa-fb-icon">\uD83D\uDD0D</span> 연결 테스트
+            </button>
+            <div id="qaGhTestResult" style="font-size:12px;margin-top:6px;min-height:18px;"></div>
+          </div>
+        </div>
+        <div class="qa-settings-modal-footer">
+          <button class="qa-settings-btn-close" id="qaGhClose">닫기</button>
+          <button class="qa-settings-btn-save" id="qaGhSave">저장</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+
+    // 기존 설정 로드
+    loadGitHubSettings().then(settings => {
+      const mapping = settings.mappings.find(m => m.urlPattern === location.origin);
+      if (mapping) {
+        qs('#qaGhRepo', overlay).value = mapping.repoOwner + '/' + mapping.repoName;
+        qs('#qaGhToken', overlay).value = mapping.token;
+      }
+    });
+
+    // 연결 테스트
+    qs('#qaGhTest', overlay).onclick = async () => {
+      const resultEl = qs('#qaGhTestResult', overlay);
+      const repoVal = qs('#qaGhRepo', overlay).value.trim();
+      const tokenVal = qs('#qaGhToken', overlay).value.trim();
+
+      if (!repoVal || !tokenVal) {
+        resultEl.innerHTML = '<span style="color:#ef4444;">레포와 토큰을 모두 입력하세요.</span>';
+        return;
+      }
+
+      const parts = repoVal.split('/');
+      if (parts.length !== 2) {
+        resultEl.innerHTML = '<span style="color:#ef4444;">owner/repo 형식으로 입력하세요.</span>';
+        return;
+      }
+
+      resultEl.innerHTML = '<span style="color:#94a3b8;">테스트 중...</span>';
+
+      try {
+        const res = await fetch(`https://api.github.com/repos/${parts[0]}/${parts[1]}`, {
+          headers: { 'Authorization': `Bearer ${tokenVal}`, 'Accept': 'application/vnd.github.v3+json' }
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          resultEl.innerHTML = `<span style="color:#22c55e;">✅ 연결 성공 — ${data.full_name} (${data.private ? '비공개' : '공개'})</span>`;
+        } else if (res.status === 401) {
+          resultEl.innerHTML = '<span style="color:#ef4444;">❌ 토큰이 유효하지 않습니다. 재발급하세요.</span>';
+        } else if (res.status === 403) {
+          resultEl.innerHTML = '<span style="color:#ef4444;">❌ 권한이 없습니다. 토큰 권한을 확인하세요.</span>';
+        } else if (res.status === 404) {
+          resultEl.innerHTML = '<span style="color:#ef4444;">❌ 레포를 찾을 수 없습니다. owner/repo를 확인하세요.</span>';
+        } else {
+          resultEl.innerHTML = `<span style="color:#ef4444;">❌ 오류 (${res.status})</span>`;
+        }
+      } catch(err) {
+        resultEl.innerHTML = '<span style="color:#ef4444;">❌ 네트워크 오류</span>';
+      }
+    };
+
+    // 저장
+    qs('#qaGhSave', overlay).onclick = async () => {
+      const repoVal = qs('#qaGhRepo', overlay).value.trim();
+      const tokenVal = qs('#qaGhToken', overlay).value.trim();
+
+      if (!repoVal || !tokenVal) {
+        showToast('레포와 토큰을 모두 입력하세요.');
+        return;
+      }
+
+      const parts = repoVal.split('/');
+      if (parts.length !== 2) {
+        showToast('owner/repo 형식으로 입력하세요.');
+        return;
+      }
+
+      const settings = await loadGitHubSettings();
+      const existingIdx = settings.mappings.findIndex(m => m.urlPattern === location.origin);
+      const mapping = {
+        urlPattern: location.origin,
+        matchMode: 'exact',
+        repoOwner: parts[0],
+        repoName: parts[1],
+        token: tokenVal,
+      };
+
+      if (existingIdx >= 0) {
+        settings.mappings[existingIdx] = mapping;
+      } else {
+        settings.mappings.push(mapping);
+      }
+
+      await saveGitHubSettings(settings);
+      overlay.remove();
+      showToast('GitHub 설정이 저장되었습니다.');
+    };
+
+    qs('#qaGhClose', overlay).onclick = () => overlay.remove();
+    setTimeout(() => {
+      overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+    }, 100);
+  }
+
+  /* Issue 생성 */
+  async function ensureLabelExists(owner, repo, token) {
+    try {
+      const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/labels/qa-feedback`, {
+        headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/vnd.github.v3+json' }
+      });
+      if (res.status === 404) {
+        await fetch(`https://api.github.com/repos/${owner}/${repo}/labels`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/vnd.github.v3+json', 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: 'qa-feedback', color: 'c5def5', description: 'QA 피드백 자동 생성' })
+        });
+      }
+    } catch(e) { /* label 생성 실패해도 무시 */ }
+  }
+
+  async function createGitHubIssue(markdown, feedbackCount) {
+    const mapping = await getGitHubMapping();
+    if (!mapping) {
+      showToast('GitHub 설정이 필요합니다. 🔗 GitHub 설정에서 연결하세요.');
+      return null;
+    }
+
+    const { repoOwner, repoName, token } = mapping;
+    const today = new Date().toISOString().slice(0, 10);
+    const pathname = location.pathname.split('/').pop() || 'index';
+    const title = `[QA] ${pathname} — 피드백 ${feedbackCount}건 (${today})`;
+
+    await ensureLabelExists(repoOwner, repoName, token);
+
+    try {
+      const res = await fetch(`https://api.github.com/repos/${repoOwner}/${repoName}/issues`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Accept': 'application/vnd.github.v3+json',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          title: title,
+          body: markdown,
+          labels: ['qa-feedback']
+        })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        return { number: data.number, url: data.html_url };
+      } else if (res.status === 401) {
+        showToast('❌ 토큰이 만료되었습니다. GitHub 설정에서 토큰을 재설정하세요.');
+      } else if (res.status === 403) {
+        showToast('❌ 권한이 없습니다. 토큰 권한을 확인하세요.');
+      } else if (res.status === 404) {
+        showToast('❌ 레포를 찾을 수 없습니다. GitHub 설정을 확인하세요.');
+      } else {
+        showToast(`❌ Issue 생성 실패 (${res.status})`);
+      }
+      return null;
+    } catch(err) {
+      showToast('❌ 네트워크 오류로 Issue 생성에 실패했습니다.');
+      return null;
+    }
+  }
+
+  /* Issue 이력 저장 (세션에 기록) */
+  async function recordIssueHistory(issueData, type) {
+    const data = await getSessionsData();
+    // 현재 피드백 URL에 해당하는 가장 최근 세션 찾기
+    const currentPath = location.pathname;
+    const session = data.sessions.find(s => s.page === currentPath && s.status !== 'closed');
+    if (session) {
+      if (!session.issueHistory) session.issueHistory = [];
+      session.issueHistory.push({
+        issueNumber: issueData.number,
+        issueUrl: issueData.url,
+        sentAt: new Date().toISOString(),
+        feedbackCount: STATE.feedbacks.length,
+        type: type || 'initial'
+      });
+      await saveSessionsData(data);
+    }
+  }
+
+  /* 현재 피드백의 Issue 전송 이력 확인 */
+  async function getLastIssueHistory() {
+    const data = await getSessionsData();
+    const currentPath = location.pathname;
+    for (let i = data.sessions.length - 1; i >= 0; i--) {
+      const s = data.sessions[i];
+      if (s.page === currentPath && s.issueHistory && s.issueHistory.length > 0) {
+        return s.issueHistory[s.issueHistory.length - 1];
+      }
+    }
+    return null;
+  }
 
   /* ===== Overlay Visibility ===== */
   function isElementVisible(el) {
