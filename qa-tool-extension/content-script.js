@@ -178,21 +178,21 @@
             <span class="qa-fb-icon">\uD83D\uDDD1\uFE0F</span> 초기화 <span class="qa-shortcut-hint" data-action="reset" style="font-size:10px;color:#64748b;margin-left:auto;">R</span>
           </button>
           <div class="qa-feedback-sep"></div>
+          <button class="qa-feedback-btn" id="qaGitHubSettings">
+            <span class="qa-fb-icon">\uD83D\uDD17</span> GitHub 설정
+          </button>
+          <button class="qa-feedback-btn" id="qaGhIssueList" style="display:none;">
+            <span class="qa-fb-icon">\uD83D\uDCCB</span> 이슈 현황
+          </button>
+          <div class="qa-feedback-sep"></div>
           <button class="qa-feedback-btn" id="qaSessionSave">
             <span class="qa-fb-icon">\uD83D\uDCBE</span> 세션 저장
           </button>
           <button class="qa-feedback-btn" id="qaSessionLoad">
             <span class="qa-fb-icon">\uD83D\uDCC2</span> 세션 불러오기
           </button>
-          <div class="qa-feedback-sep"></div>
           <button class="qa-feedback-btn" id="qaSettingsToggle">
             <span class="qa-fb-icon">\u2699\uFE0F</span> 단축키 설정
-          </button>
-          <button class="qa-feedback-btn" id="qaGitHubSettings">
-            <span class="qa-fb-icon">\uD83D\uDD17</span> GitHub 설정
-          </button>
-          <button class="qa-feedback-btn" id="qaGhIssueList" style="display:none;">
-            <span class="qa-fb-icon">\uD83D\uDCCB</span> 이슈 현황
           </button>
         </div>
       </div>
@@ -1107,20 +1107,101 @@
         if (!confirm(`이미 Issue #${lastIssue.issueNumber}으로 전송되었습니다.\n새로 생성하시겠습니까?`)) return;
       }
 
+      showIssueSendModal(overlay, ghIssueBtn);
+    };
+
+    overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+  }
+
+  /* ===== Issue Send Modal ===== */
+  function showIssueSendModal(parentOverlay, ghIssueBtn) {
+    const sendOverlay = ce('div', 'qa-settings-overlay');
+    const page = location.pathname.split('/').pop() || 'index';
+    const today = new Date().toISOString().slice(0, 10);
+    const defaultTitle = `[QA] ${page} — 피드백 ${STATE.feedbacks.length}건 (${today})`;
+
+    const fbListHtml = STATE.feedbacks.map((fb, i) => {
+      const typeTag = fb.fbType || 'UI';
+      const summary = truncate(fb.feedback, 30);
+      const section = fb.section ? ' — ' + fb.section : '';
+      return `<label class="qa-gh-send-item"><input type="checkbox" checked data-idx="${i}" />${circled(i+1)} [${typeTag}] ${summary}${section}</label>`;
+    }).join('');
+
+    sendOverlay.innerHTML = `
+      <div class="qa-settings-modal" style="width:440px;max-height:80vh;display:flex;flex-direction:column;">
+        <div class="qa-settings-modal-header">
+          <h3>\uD83D\uDE80 GitHub Issue 전송</h3>
+        </div>
+        <div class="qa-settings-modal-body" style="overflow-y:auto;flex:1;">
+          <div class="qa-gh-field">
+            <label>이슈 제목 (선택)</label>
+            <input type="text" id="qaIssueTitleInput" placeholder="미입력 시 자동 생성" />
+          </div>
+          <div class="qa-gh-field" style="margin-top:12px;">
+            <label>전송 범위</label>
+            <div style="margin-top:6px;">
+              <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#e2e8f0;cursor:pointer;margin-bottom:4px;">
+                <input type="radio" name="qaSendScope" value="all" checked style="accent-color:#3b82f6;" /> 전체 피드백 (${STATE.feedbacks.length}건)
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#e2e8f0;cursor:pointer;">
+                <input type="radio" name="qaSendScope" value="selected" style="accent-color:#3b82f6;" /> 선택한 피드백만
+              </label>
+            </div>
+          </div>
+          <div id="qaIssueFbList" style="display:none;margin-top:10px;max-height:200px;overflow-y:auto;border:1px solid #334155;border-radius:8px;padding:8px;">
+            ${fbListHtml}
+          </div>
+        </div>
+        <div class="qa-settings-modal-footer">
+          <button class="qa-settings-btn-close" id="qaIssueSendCancel">취소</button>
+          <button class="qa-settings-btn-save" id="qaIssueSendConfirm">전송</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(sendOverlay);
+
+    const fbListEl = qs('#qaIssueFbList', sendOverlay);
+    sendOverlay.querySelectorAll('input[name="qaSendScope"]').forEach(radio => {
+      radio.onchange = () => {
+        fbListEl.style.display = radio.value === 'selected' && radio.checked ? '' : 'none';
+      };
+    });
+
+    qs('#qaIssueSendCancel', sendOverlay).onclick = () => sendOverlay.remove();
+
+    qs('#qaIssueSendConfirm', sendOverlay).onclick = async () => {
+      const customTitle = qs('#qaIssueTitleInput', sendOverlay).value.trim();
+      const scope = sendOverlay.querySelector('input[name="qaSendScope"]:checked').value;
+
+      let selectedFeedbacks = STATE.feedbacks;
+      if (scope === 'selected') {
+        const checkedIdxs = [];
+        fbListEl.querySelectorAll('input[type="checkbox"]:checked').forEach(cb => {
+          checkedIdxs.push(parseInt(cb.dataset.idx));
+        });
+        if (checkedIdxs.length === 0) {
+          showToast('전송할 피드백을 선택하세요.');
+          return;
+        }
+        selectedFeedbacks = checkedIdxs.map(i => STATE.feedbacks[i]);
+      }
+
+      // 선택된 피드백으로 마크다운 생성
+      const md = generateMarkdownForFeedbacks(selectedFeedbacks, STATE.detailLevel);
+      const title = customTitle || `[QA] ${location.pathname.split('/').pop() || 'index'} — 피드백 ${selectedFeedbacks.length}건 (${new Date().toISOString().slice(0, 10)})`;
+
+      sendOverlay.remove();
       ghIssueBtn.disabled = true;
       ghIssueBtn.textContent = '전송 중...';
 
-      const markdownContent = pre.textContent;
       const type = STATE.reviewMode ? 'review-resend' : 'initial';
-      const result = await createGitHubIssue(markdownContent, STATE.feedbacks.length);
+      const result = await createGitHubIssueWithTitle(title, md, selectedFeedbacks.length);
 
       if (result) {
         await recordIssueHistory(result, type);
-        ghIssueBtn.textContent = `✅ Issue #${result.number}`;
+        ghIssueBtn.textContent = `\u2705 Issue #${result.number}`;
         ghIssueBtn.style.background = '#22c55e';
-        showToast(`✅ Issue #${result.number} 생성 완료 (피드백 ${STATE.feedbacks.length}건)`);
-
-        // Issue URL 링크 추가
+        showToast(`\u2705 Issue #${result.number} 생성 완료 (피드백 ${selectedFeedbacks.length}건)`);
         setTimeout(() => {
           ghIssueBtn.textContent = `Issue #${result.number} 열기`;
           ghIssueBtn.style.background = '#24292f';
@@ -1133,7 +1214,75 @@
       }
     };
 
-    overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+    setTimeout(() => {
+      sendOverlay.addEventListener('click', e => { if (e.target === sendOverlay) sendOverlay.remove(); });
+    }, 100);
+  }
+
+  /* 선택 피드백으로 마크다운 생성 */
+  function generateMarkdownForFeedbacks(feedbacks, level) {
+    const now = new Date();
+    const dateStr = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0') + '-' + String(now.getDate()).padStart(2,'0') + ' ' + String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0');
+    const page = location.pathname.split('/').pop() || 'index.html';
+
+    let md = `# QA \uD53C\uB4DC\uBC31 \u2014 ${page}\n> \uAC80\uC218\uC77C: ${dateStr}\n> \uCD1D \uD53C\uB4DC\uBC31: ${feedbacks.length}\uAC74\n> \uC0C1\uC138\uB3C4: ${level}\n\n---\n\n`;
+
+    feedbacks.forEach((fb, i) => {
+      const num = i + 1;
+      const sectionLabel = fb.section ? ` \u2014 ${fb.section}` : '';
+      const tag = fb.tagName || '\uC694\uC18C';
+      const typeTag = fb.fbType ? `[${fb.fbType}] ` : '';
+      md += `## ${circled(num)} ${typeTag}${tag}${sectionLabel}\n`;
+      if (fb.selector) md += `- **\uC694\uC18C**: \`${fb.selector}\`\n`;
+
+      if (fb.fbType === '\uC704\uCE58\uC774\uB3D9') {
+        const memo = fb.feedback.includes(' — ') ? fb.feedback.split(' — ').slice(1).join(' — ') : '';
+        if (fb.moveType === 'component') {
+          const dirLabels = { left: '\u2B05 왼쪽', right: '\u27A1 오른쪽', up: '\u2B06 위로', down: '\u2B07 아래로' };
+          md += `- **\uC774\uB3D9 \uBC29\uC2DD**: 컴포넌트 이동\n`;
+          md += `- **\uBC29\uD5A5**: ${dirLabels[fb.moveDirection] || fb.moveDirection}\n`;
+        } else if (fb.moveType === 'free' && fb.moveTarget) {
+          md += `- **\uC774\uB3D9 \uBC29\uC2DD**: 자유 위치 이동\n`;
+          const destDesc = fb.moveTarget.description || (fb.moveTarget.nearestSelector ? fb.moveTarget.nearestSelector + ' 근처' : `(${fb.moveTarget.x}, ${fb.moveTarget.y})`);
+          md += `- **\uC774\uB3D9 \uBAA9\uC801\uC9C0**: ${destDesc} (${fb.moveTarget.x}, ${fb.moveTarget.y})\n`;
+        }
+        if (memo) md += `- **\uBA54\uBAA8**: ${memo}\n`;
+      } else {
+        if (level !== 'compact') {
+          if (fb.textContent) md += `- **\uD604\uC7AC \uD14D\uC2A4\uD2B8**: "${truncate(fb.textContent, 80)}"\n`;
+        }
+        md += `- **\uD53C\uB4DC\uBC31**: ${fb.feedback}\n`;
+      }
+      md += '\n';
+    });
+
+    md += `---\n> \uC774 \uD53C\uB4DC\uBC31\uC744 \uD074\uB85C\uB4DC \uCF54\uB4DC\uC5D0 \uBD99\uC5EC\uB123\uC5B4 \uC218\uC815\uC744 \uC694\uCCAD\uD558\uC138\uC694.\n`;
+    return md;
+  }
+
+  /* 제목 지정 가능한 Issue 생성 */
+  async function createGitHubIssueWithTitle(title, markdown, feedbackCount) {
+    const mapping = await getGitHubMapping();
+    if (!mapping) { showToast('GitHub 설정이 필요합니다.'); return null; }
+
+    const { repoOwner, repoName, token } = mapping;
+    await ensureLabelExists(repoOwner, repoName, token);
+
+    try {
+      const res = await fetch(`https://api.github.com/repos/${repoOwner}/${repoName}/issues`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/vnd.github.v3+json', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, body: markdown, labels: ['qa-feedback'] })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        return { number: data.number, url: data.html_url };
+      } else if (res.status === 401) { showToast('❌ 토큰이 만료되었습니다.'); }
+      else if (res.status === 403) { showToast('❌ 권한이 없습니다.'); }
+      else if (res.status === 404) { showToast('❌ 레포를 찾을 수 없습니다.'); }
+      else { showToast(`❌ Issue 생성 실패 (${res.status})`); }
+      return null;
+    } catch(err) { showToast('❌ 네트워크 오류'); return null; }
   }
 
   /* ===== Reset ===== */
@@ -2297,13 +2446,23 @@
   }
 
   /* Issue 리스트 조회 */
-  async function fetchGitHubIssues(owner, repo, token, state) {
+  const ARCHIVE_KEY = 'qa-archived-issues';
+
+  async function getArchivedIssues() {
+    try { const r = await chrome.storage.local.get(ARCHIVE_KEY); return r[ARCHIVE_KEY] || []; } catch(e) { return []; }
+  }
+  async function saveArchivedIssues(list) { await chrome.storage.local.set({ [ARCHIVE_KEY]: list }); }
+
+  async function fetchGitHubIssues(owner, repo, token, page) {
     const res = await fetch(
-      `https://api.github.com/repos/${owner}/${repo}/issues?labels=qa-feedback&state=${state || 'all'}&per_page=20`,
+      `https://api.github.com/repos/${owner}/${repo}/issues?labels=qa-feedback&state=all&per_page=5&page=${page || 1}`,
       { headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/vnd.github.v3+json' } }
     );
     if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-    return res.json();
+    const linkHeader = res.headers.get('Link') || '';
+    const hasNext = linkHeader.includes('rel="next"');
+    const hasPrev = page > 1;
+    return { issues: await res.json(), hasNext, hasPrev };
   }
 
   async function showGitHubIssueList() {
@@ -2321,9 +2480,15 @@
           <button class="qa-gh-filter-tab active" data-filter="all">전체</button>
           <button class="qa-gh-filter-tab" data-filter="open">Open</button>
           <button class="qa-gh-filter-tab" data-filter="closed">Closed</button>
+          <button class="qa-gh-filter-tab" data-filter="archived">아카이브</button>
         </div>
-        <div id="qaGhIssueListBody" style="padding:12px 20px;overflow-y:auto;max-height:55vh;">
+        <div id="qaGhIssueListBody" style="padding:12px 20px;overflow-y:auto;max-height:50vh;">
           <div style="text-align:center;color:#94a3b8;padding:20px;">이슈 불러오는 중...</div>
+        </div>
+        <div id="qaGhPagination" style="display:none;padding:8px 20px;display:flex;align-items:center;justify-content:center;gap:12px;border-top:1px solid #e2e8f0;font-size:12px;color:#94a3b8;">
+          <button id="qaGhPrev" class="qa-gh-action-btn" disabled>\u25C0 이전</button>
+          <span id="qaGhPageInfo">1</span>
+          <button id="qaGhNext" class="qa-gh-action-btn">\u25B6 다음</button>
         </div>
         <div class="qa-feedback-output-actions">
           <button style="background:#f1f5f9;color:#475569;" onclick="this.closest('.qa-feedback-output-overlay').remove()">닫기</button>
@@ -2333,37 +2498,93 @@
     document.body.appendChild(overlay);
     overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
 
-    let allIssues = [];
+    let currentPage = 1;
     let activeFilter = 'all';
+    let archivedList = await getArchivedIssues();
     const body = qs('#qaGhIssueListBody', overlay);
+    const paginationEl = qs('#qaGhPagination', overlay);
     const currentPath = location.pathname.split('/').pop() || 'index';
 
-    function renderIssues() {
-      const filtered = activeFilter === 'all' ? allIssues : allIssues.filter(i => i.state === activeFilter);
-      if (filtered.length === 0) {
-        body.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:20px;">표시할 이슈가 없습니다.</div>';
-        return;
-      }
-      body.innerHTML = filtered.map(issue => {
-        const isOpen = issue.state === 'open';
-        const icon = isOpen ? '\uD83D\uDFE2' : '\u2705';
-        const date = issue.created_at ? issue.created_at.slice(0, 10) : '';
-        const isSamePage = issue.title && issue.title.includes(currentPath);
-        const reviewBtn = (!isOpen && isSamePage) ? `<button class="qa-gh-action-btn qa-gh-review-btn" data-number="${issue.number}" data-url="${issue.html_url}" data-title="${issue.title.replace(/"/g, '&quot;')}">재검수</button>` : '';
-        return `
+    async function loadPage() {
+      body.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:20px;">이슈 불러오는 중...</div>';
+
+      // 아카이브 탭은 로컬 데이터
+      if (activeFilter === 'archived') {
+        paginationEl.style.display = 'none';
+        if (archivedList.length === 0) {
+          body.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:20px;">아카이브된 이슈가 없습니다.</div>';
+          return;
+        }
+        body.innerHTML = archivedList.map(a => `
           <div class="qa-gh-issue-row">
             <div class="qa-gh-issue-info">
-              <div style="font-size:13px;font-weight:500;color:#1e293b;">${icon} ${issue.title}</div>
-              <div style="font-size:11px;color:#94a3b8;margin-top:3px;">${date}</div>
+              <div style="font-size:13px;font-weight:500;color:#94a3b8;">\u2705 #${a.number} ${a.title || ''}</div>
             </div>
             <div class="qa-gh-issue-actions">
-              ${reviewBtn}
-              <button class="qa-gh-action-btn qa-gh-link-btn" data-url="${issue.html_url}">GitHub \u2197</button>
+              <button class="qa-gh-action-btn qa-gh-restore-btn" data-number="${a.number}" style="color:#3b82f6;border-color:#3b82f6;">복원</button>
+              <button class="qa-gh-action-btn qa-gh-link-btn" data-url="${a.url}">GitHub \u2197</button>
             </div>
           </div>
-        `;
-      }).join('');
+        `).join('');
+        bindActions();
+        return;
+      }
 
+      try {
+        const result = await fetchGitHubIssues(mapping.repoOwner, mapping.repoName, mapping.token, currentPage);
+        let issues = result.issues;
+
+        // 아카이브된 이슈 필터
+        const archivedNums = new Set(archivedList.map(a => a.number));
+        issues = issues.filter(i => !archivedNums.has(i.number));
+
+        // 상태 필터
+        if (activeFilter === 'open') issues = issues.filter(i => i.state === 'open');
+        if (activeFilter === 'closed') issues = issues.filter(i => i.state === 'closed');
+
+        if (issues.length === 0 && currentPage === 1) {
+          body.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:20px;">표시할 이슈가 없습니다.</div>';
+          paginationEl.style.display = 'none';
+          return;
+        }
+
+        body.innerHTML = issues.map(issue => {
+          const isOpen = issue.state === 'open';
+          const icon = isOpen ? '\uD83D\uDFE2' : '\u2705';
+          const date = issue.created_at ? issue.created_at.slice(0, 10) : '';
+          const isSamePage = issue.title && issue.title.includes(currentPath);
+          const reviewBtn = (!isOpen && isSamePage) ? `<button class="qa-gh-action-btn qa-gh-review-btn" data-number="${issue.number}" data-url="${issue.html_url}" data-title="${issue.title.replace(/"/g, '&quot;')}">재검수</button>` : '';
+          const archiveBtn = !isOpen ? `<button class="qa-gh-action-btn qa-gh-archive-btn" data-number="${issue.number}" data-url="${issue.html_url}" data-title="${issue.title.replace(/"/g, '&quot;')}" style="color:#94a3b8;">아카이브</button>` : '';
+          return `
+            <div class="qa-gh-issue-row">
+              <div class="qa-gh-issue-info">
+                <div style="font-size:13px;font-weight:500;color:#1e293b;">${icon} ${issue.title}</div>
+                <div style="font-size:11px;color:#94a3b8;margin-top:3px;">${date}</div>
+              </div>
+              <div class="qa-gh-issue-actions">
+                ${reviewBtn}${archiveBtn}
+                <button class="qa-gh-action-btn qa-gh-link-btn" data-url="${issue.html_url}">GitHub \u2197</button>
+              </div>
+            </div>
+          `;
+        }).join('');
+
+        // 페이지네이션
+        paginationEl.style.display = 'flex';
+        qs('#qaGhPrev', overlay).disabled = !result.hasPrev;
+        qs('#qaGhNext', overlay).disabled = !result.hasNext;
+        qs('#qaGhPageInfo', overlay).textContent = `${currentPage} 페이지`;
+
+        bindActions();
+      } catch(err) {
+        const msg = err.message || '';
+        if (msg.includes('401')) body.innerHTML = '<div style="text-align:center;color:#ef4444;padding:20px;">토큰이 만료되었습니다. 설정에서 재발급하세요.</div>';
+        else body.innerHTML = '<div style="text-align:center;color:#ef4444;padding:20px;">이슈를 불러올 수 없습니다. 설정을 확인하세요.</div>';
+        paginationEl.style.display = 'none';
+      }
+    }
+
+    function bindActions() {
       body.querySelectorAll('.qa-gh-link-btn').forEach(btn => {
         btn.onclick = (e) => { e.stopPropagation(); window.open(btn.dataset.url, '_blank'); };
       });
@@ -2374,6 +2595,25 @@
           enterIssueReviewMode(parseInt(btn.dataset.number), btn.dataset.url, btn.dataset.title);
         };
       });
+      body.querySelectorAll('.qa-gh-archive-btn').forEach(btn => {
+        btn.onclick = async (e) => {
+          e.stopPropagation();
+          archivedList.push({ number: parseInt(btn.dataset.number), url: btn.dataset.url, title: btn.dataset.title });
+          await saveArchivedIssues(archivedList);
+          showToast(`이슈 #${btn.dataset.number} 아카이브됨`);
+          loadPage();
+        };
+      });
+      body.querySelectorAll('.qa-gh-restore-btn').forEach(btn => {
+        btn.onclick = async (e) => {
+          e.stopPropagation();
+          const num = parseInt(btn.dataset.number);
+          archivedList = archivedList.filter(a => a.number !== num);
+          await saveArchivedIssues(archivedList);
+          showToast(`이슈 #${num} 복원됨`);
+          loadPage();
+        };
+      });
     }
 
     // 필터 탭
@@ -2382,25 +2622,16 @@
         qs('#qaGhFilterTabs', overlay).querySelectorAll('.qa-gh-filter-tab').forEach(t => t.classList.remove('active'));
         tab.classList.add('active');
         activeFilter = tab.dataset.filter;
-        renderIssues();
+        currentPage = 1;
+        loadPage();
       };
     });
 
-    try {
-      allIssues = await fetchGitHubIssues(mapping.repoOwner, mapping.repoName, mapping.token);
-      if (allIssues.length === 0) {
-        body.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:20px;">아직 전송된 이슈가 없습니다.</div>';
-        return;
-      }
-      renderIssues();
-    } catch(err) {
-      const msg = err.message || '';
-      if (msg.includes('401')) {
-        body.innerHTML = '<div style="text-align:center;color:#ef4444;padding:20px;">토큰이 만료되었습니다. 설정에서 재발급하세요.</div>';
-      } else {
-        body.innerHTML = '<div style="text-align:center;color:#ef4444;padding:20px;">이슈를 불러올 수 없습니다. 설정을 확인하세요.</div>';
-      }
-    }
+    // 페이지네이션 버튼
+    qs('#qaGhPrev', overlay).onclick = () => { if (currentPage > 1) { currentPage--; loadPage(); } };
+    qs('#qaGhNext', overlay).onclick = () => { currentPage++; loadPage(); };
+
+    loadPage();
   }
 
   /* ===== Issue 재검수 모드 ===== */
