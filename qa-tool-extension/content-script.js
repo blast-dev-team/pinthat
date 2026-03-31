@@ -2074,7 +2074,9 @@
   chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (msg.action === 'toggle-qa') {
       if (panel) {
-        panel.style.display = panel.style.display === 'none' ? '' : 'none';
+        const showing = panel.style.display === 'none';
+        panel.style.display = showing ? '' : 'none';
+        if (showing) checkUserPlan(true);
       }
       toggleActive();
     }
@@ -2753,11 +2755,11 @@
   const PRICE_MONTHLY = 'price_1TGyk6DYzHZgHbYuaa7l4brX';
   const PRICE_LIFETIME = 'price_1TGynHDYzHZgHbYuoGARymvh';
 
-  async function checkUserPlan() {
+  async function checkUserPlan(forceRefresh) {
     const settings = await loadGitHubSettings();
     if (!settings.auth || !settings.auth.username) return 'free';
 
-    if (settings.planCheckedAt && (Date.now() - settings.planCheckedAt < 3600000)) {
+    if (!forceRefresh && settings.planCheckedAt && (Date.now() - settings.planCheckedAt < 300000)) {
       return settings.plan || 'free';
     }
 
@@ -2859,6 +2861,11 @@
         if (data.url) {
           window.open(data.url, '_blank');
           overlay.remove();
+          // 결제 탭에서 돌아왔을 때 캐시 무시하고 플랜 재확인
+          window.addEventListener('focus', function onFocus() {
+            window.removeEventListener('focus', onFocus);
+            checkUserPlan(true);
+          });
         } else {
           showToast(data.error || '결제 페이지를 열 수 없습니다.');
           qs('#qaProUpgrade', overlay).textContent = '업그레이드';
