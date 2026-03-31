@@ -66,9 +66,7 @@
 .qa-feedback-output-modal { background:#fff; border-radius:16px; width:90%; max-width:640px; max-height:85vh; display:flex; flex-direction:column; color:#1e293b; }
 .qa-feedback-output-modal-header { padding:18px 20px; border-bottom:1px solid #e2e8f0; display:flex; align-items:center; justify-content:space-between; }
 .qa-feedback-output-modal-header h3 { font-size:16px; margin:0; }
-.qa-feedback-output-levels { display:flex; gap:6px; padding:12px 20px; border-bottom:1px solid #f1f5f9; }
-.qa-feedback-output-levels button { padding:5px 12px; border-radius:6px; font-size:12px; border:1px solid #e2e8f0; background:#fff; cursor:pointer; color:#64748b; }
-.qa-feedback-output-levels button.active { background:#1e293b; color:#fff; border-color:#1e293b; }
+
 .qa-feedback-output-pre { flex:1; overflow:auto; padding:16px 20px; }
 .qa-feedback-output-pre pre { white-space:pre-wrap; font-size:12px; line-height:1.6; font-family:'SF Mono',Menlo,monospace; background:#f8fafc; padding:16px; border-radius:8px; border:1px solid #e2e8f0; }
 .qa-feedback-output-actions { padding:14px 20px; border-top:1px solid #e2e8f0; display:flex; gap:8px; justify-content:flex-end; }

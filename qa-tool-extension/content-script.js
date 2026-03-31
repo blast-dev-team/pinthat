@@ -898,12 +898,12 @@
   }
 
   /* ===== Markdown Output ===== */
-  function generateMarkdown(level) {
+  function generateMarkdown() {
     const now = new Date();
     const dateStr = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0') + '-' + String(now.getDate()).padStart(2,'0') + ' ' + String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0');
     const page = location.pathname.split('/').pop() || 'index.html';
 
-    let md = `# QA \uD53C\uB4DC\uBC31 \u2014 ${page}\n> \uAC80\uC218\uC77C: ${dateStr}\n> \uCD1D \uD53C\uB4DC\uBC31: ${STATE.feedbacks.length}\uAC74\n> \uC0C1\uC138\uB3C4: ${level}\n\n---\n\n`;
+    let md = `# QA \uD53C\uB4DC\uBC31 \u2014 ${page}\n> \uAC80\uC218\uC77C: ${dateStr}\n> \uCD1D \uD53C\uB4DC\uBC31: ${STATE.feedbacks.length}\uAC74\n\n---\n\n`;
 
     STATE.feedbacks.forEach((fb, i) => {
       const num = i + 1;
@@ -927,26 +927,13 @@
         }
         if (memo) md += `- **\uBA54\uBAA8**: ${memo}\n`;
       } else {
-        if (level !== 'compact') {
-          if (fb.textContent) md += `- **\uD604\uC7AC \uD14D\uC2A4\uD2B8**: "${truncate(fb.textContent, 80)}"\n`;
-        }
+        if (fb.textContent) md += `- **\uD604\uC7AC \uD14D\uC2A4\uD2B8**: "${truncate(fb.textContent, 80)}"\n`;
         md += `- **\uD53C\uB4DC\uBC31**: ${fb.feedback}\n`;
       }
 
-      if (level === 'detailed' || level === 'forensic') {
-        if (fb.bbox) md += `- **\uC704\uCE58**: x:${fb.bbox.x} y:${fb.bbox.y} ${fb.bbox.w}x${fb.bbox.h}\n`;
-        if (fb.multiEls && fb.multiEls.length > 0) {
-          md += `- **\uCD94\uAC00 \uC120\uD0DD \uC694\uC18C**: ${fb.multiEls.map(e => '`' + e.selector + '`').join(', ')}\n`;
-        }
-      }
-
-      if (level === 'forensic' && fb.styles) {
-        md += `- **\uACC4\uC0B0\uB41C \uC2A4\uD0C0\uC77C**:\n`;
-        Object.entries(fb.styles).forEach(([k, v]) => {
-          if (v && v !== 'normal' && v !== 'none' && v !== '0px' && v !== 'rgba(0, 0, 0, 0)' && v !== 'static') {
-            md += `  - ${k}: \`${v}\`\n`;
-          }
-        });
+      if (fb.bbox) md += `- **\uC704\uCE58**: x:${fb.bbox.x} y:${fb.bbox.y} ${fb.bbox.w}x${fb.bbox.h}\n`;
+      if (fb.multiEls && fb.multiEls.length > 0) {
+        md += `- **\uCD94\uAC00 \uC120\uD0DD \uC694\uC18C**: ${fb.multiEls.map(e => '`' + e.selector + '`').join(', ')}\n`;
       }
 
       md += '\n';
@@ -968,7 +955,7 @@
     }
 
     const overlay = ce('div', 'qa-feedback-output-overlay');
-    const md = generateMarkdown('detailed');
+    const md = generateMarkdown();
 
     overlay.innerHTML = `
       <div class="qa-feedback-output-modal">
@@ -1100,7 +1087,7 @@
       }
 
       // 선택된 피드백으로 마크다운 생성
-      const md = generateMarkdownForFeedbacks(selectedFeedbacks, 'detailed');
+      const md = generateMarkdownForFeedbacks(selectedFeedbacks);
       const title = customTitle || `[QA] ${location.pathname.split('/').pop() || 'index'} — 피드백 ${selectedFeedbacks.length}건 (${new Date().toISOString().slice(0, 10)})`;
 
       sendOverlay.remove();
@@ -1133,12 +1120,12 @@
   }
 
   /* 선택 피드백으로 마크다운 생성 */
-  function generateMarkdownForFeedbacks(feedbacks, level) {
+  function generateMarkdownForFeedbacks(feedbacks) {
     const now = new Date();
     const dateStr = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0') + '-' + String(now.getDate()).padStart(2,'0') + ' ' + String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0');
     const page = location.pathname.split('/').pop() || 'index.html';
 
-    let md = `# QA \uD53C\uB4DC\uBC31 \u2014 ${page}\n> \uAC80\uC218\uC77C: ${dateStr}\n> \uCD1D \uD53C\uB4DC\uBC31: ${feedbacks.length}\uAC74\n> \uC0C1\uC138\uB3C4: ${level}\n\n---\n\n`;
+    let md = `# QA \uD53C\uB4DC\uBC31 \u2014 ${page}\n> \uAC80\uC218\uC77C: ${dateStr}\n> \uCD1D \uD53C\uB4DC\uBC31: ${feedbacks.length}\uAC74\n\n---\n\n`;
 
     feedbacks.forEach((fb, i) => {
       const num = i + 1;
@@ -1161,9 +1148,7 @@
         }
         if (memo) md += `- **\uBA54\uBAA8**: ${memo}\n`;
       } else {
-        if (level !== 'compact') {
-          if (fb.textContent) md += `- **\uD604\uC7AC \uD14D\uC2A4\uD2B8**: "${truncate(fb.textContent, 80)}"\n`;
-        }
+        if (fb.textContent) md += `- **\uD604\uC7AC \uD14D\uC2A4\uD2B8**: "${truncate(fb.textContent, 80)}"\n`;
         md += `- **\uD53C\uB4DC\uBC31**: ${fb.feedback}\n`;
       }
       md += '\n';
@@ -1580,8 +1565,6 @@
 
   async function completeReview() {
     const md = await generateReviewMarkdown();
-    const devReq = generateNotFixedDevRequest();
-    let currentReviewTab = 'report';
 
     const overlay = ce('div', 'qa-feedback-output-overlay');
     overlay.innerHTML = `
@@ -1589,10 +1572,6 @@
         <div class="qa-feedback-output-modal-header">
           <h3>\uC7AC\uAC80\uC218 \uB9AC\uD3EC\uD2B8</h3>
           <button onclick="this.closest('.qa-feedback-output-overlay').remove()" style="background:none;border:none;font-size:18px;cursor:pointer;color:#94a3b8;">\u2715</button>
-        </div>
-        <div class="qa-feedback-review-tabs" id="qaReviewTabs" style="display:flex;gap:0;margin:0 16px;border-bottom:2px solid #e2e8f0;">
-          <button data-tab="report" style="flex:1;padding:8px 0;font-size:13px;font-weight:600;border:none;background:none;cursor:pointer;border-bottom:2px solid #1e293b;margin-bottom:-2px;color:#1e293b;">\uB9AC\uD3EC\uD2B8</button>
-          <button data-tab="devrequest" style="flex:1;padding:8px 0;font-size:13px;font-weight:500;border:none;background:none;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;color:#94a3b8;">\uBBF8\uC218\uC815 DEV-REQUEST</button>
         </div>
         <div class="qa-feedback-output-pre">
           <pre id="qaReviewOutputPre"></pre>
@@ -1608,20 +1587,6 @@
 
     const pre = qs('#qaReviewOutputPre', overlay);
     pre.textContent = md;
-
-    // 탭 전환
-    qs('#qaReviewTabs', overlay).querySelectorAll('button').forEach(btn => {
-      btn.onclick = () => {
-        currentReviewTab = btn.dataset.tab;
-        pre.textContent = currentReviewTab === 'report' ? md : devReq;
-        qs('#qaReviewTabs', overlay).querySelectorAll('button').forEach(b => {
-          const isActive = b.dataset.tab === currentReviewTab;
-          b.style.borderBottomColor = isActive ? '#1e293b' : 'transparent';
-          b.style.color = isActive ? '#1e293b' : '#94a3b8';
-          b.style.fontWeight = isActive ? '600' : '500';
-        });
-      };
-    });
 
     qs('#qaReviewCopyBtn', overlay).onclick = () => {
       const text = pre.textContent;
@@ -1713,45 +1678,7 @@
     return md;
   }
 
-  function generateNotFixedDevRequest() {
-    const notFixed = STATE.feedbacks.filter(fb => fb.reviewStatus === 'not-fixed');
-    if (notFixed.length === 0) return '(\uBBF8\uC218\uC815 \uD56D\uBAA9\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.)';
 
-    const now = new Date();
-    const dateStr = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0') + '-' + String(now.getDate()).padStart(2,'0');
-    const page = location.pathname.split('/').pop() || 'index.html';
-
-    let md = `# DEV-REQUEST (\uBBF8\uC218\uC815 \uD56D\uBAA9) \u2014 ${page}\n> \uC694\uCCAD\uC77C: ${dateStr}\n> \uBBF8\uC218\uC815: ${notFixed.length}\uAC74\n\n---\n\n`;
-
-    notFixed.forEach((fb, i) => {
-      const num = i + 1;
-      const typeTag = fb.fbType || 'UI';
-      const summary = fb.feedback.length > 30 ? fb.feedback.substring(0, 30) + '...' : fb.feedback;
-      const categoryMap = { 'UI': '\uC2A4\uD0C0\uC77C/\uB808\uC774\uC544\uC6C3', '\uAE30\uB2A5': '\uB3D9\uC791/\uB85C\uC9C1', '\uD14D\uC2A4\uD2B8': '\uBB38\uAD6C', '\uC704\uCE58\uC774\uB3D9': '\uC704\uCE58 \uC774\uB3D9' };
-      const category = categoryMap[typeTag] || typeTag;
-
-      md += `### BUG-${String(num).padStart(3,'0')}: [${typeTag}] ${summary}\n`;
-      md += `- **\uC0C1\uD0DC**: \uD83D\uDCCB \uC694\uCCAD\n`;
-      md += `- **\uC694\uCCAD\uC77C**: ${dateStr}\n`;
-      md += `- **\uCE74\uD14C\uACE0\uB9AC**: ${category}\n`;
-      md += `- **\uC11C\uBE44\uC2A4 \uBCF8\uC9C8 \uC5F0\uACB0**: (\uC218\uB3D9 \uC785\uB825)\n`;
-
-      if (fb.selector) {
-        md += `- **\uC218\uC815 \uC704\uCE58**: \`${fb.selector}\`\n`;
-      }
-
-      if (fb.textContent) {
-        md += `- **\uD604\uC7AC \uC0C1\uD0DC**: "${fb.textContent.length > 60 ? fb.textContent.substring(0, 60) + '...' : fb.textContent}"\n`;
-      }
-
-      md += `- **\uC218\uC815 \uB0B4\uC6A9**: ${fb.feedback}\n`;
-      if (fb.reviewNote) md += `- **\uC7AC\uAC80\uC218 \uBA54\uBAA8**: ${fb.reviewNote}\n`;
-      md += `- **\uD14C\uC2A4\uD2B8 \uBC29\uBC95**: \uD574\uB2F9 \uC694\uC18C \uD655\uC778\n`;
-      md += '\n---\n\n';
-    });
-
-    return md;
-  }
 
   async function cancelReview() {
     const data = await getSessionsData();
