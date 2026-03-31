@@ -15,28 +15,35 @@ const ALLOWED_PRICES = {
 };
 
 async function verifyStripeSignature(payload, sigHeader, secret) {
-  const parts = sigHeader.split(',').reduce((acc, part) => {
-    const [key, value] = part.split('=');
-    acc[key] = value;
-    return acc;
-  }, {});
+  try {
+    if (!sigHeader || !secret) return false;
 
-  const timestamp = parts['t'];
-  const signature = parts['v1'];
-  if (!timestamp || !signature) return false;
+    const parts = {};
+    sigHeader.split(',').forEach(part => {
+      const idx = part.indexOf('=');
+      if (idx > 0) parts[part.substring(0, idx).trim()] = part.substring(idx + 1).trim();
+    });
 
-  const signedPayload = `${timestamp}.${payload}`;
-  const key = await crypto.subtle.importKey(
-    'raw',
-    new TextEncoder().encode(secret),
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign']
-  );
-  const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(signedPayload));
-  const expectedSig = Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2, '0')).join('');
+    const timestamp = parts['t'];
+    const signature = parts['v1'];
+    if (!timestamp || !signature) return false;
 
-  return expectedSig === signature;
+    const signedPayload = `${timestamp}.${payload}`;
+    const key = await crypto.subtle.importKey(
+      'raw',
+      new TextEncoder().encode(secret),
+      { name: 'HMAC', hash: 'SHA-256' },
+      false,
+      ['sign']
+    );
+    const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(signedPayload));
+    const expectedSig = Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2, '0')).join('');
+
+    return expectedSig === signature;
+  } catch (err) {
+    console.error('[verifyStripeSignature] Error:', err.message);
+    return false;
+  }
 }
 
 const CORS_HEADERS = {
@@ -234,23 +241,27 @@ export default {
 
     // ===== Route: POST /stripe-webhook =====
     if (url.pathname === '/stripe-webhook' && request.method === 'POST') {
-      const payload = await request.text();
-      const sigHeader = request.headers.get('Stripe-Signature') || '';
-
-      const valid = await verifyStripeSignature(payload, sigHeader, env.STRIPE_WEBHOOK_SECRET);
-      if (!valid) {
-        return new Response('Invalid signature', { status: 400 });
-      }
-
       try {
+        const payload = await request.text();
+        const sigHeader = request.headers.get('Stripe-Signature') || '';
+
+        console.log('[webhook] Received event, sig present:', !!sigHeader, 'secret present:', !!env.STRIPE_WEBHOOK_SECRET);
+
+        const valid = await verifyStripeSignature(payload, sigHeader, env.STRIPE_WEBHOOK_SECRET);
+        if (!valid) {
+          console.error('[webhook] Signature verification failed');
+          return new Response('Invalid signature', { status: 400 });
+        }
+
         const event = JSON.parse(payload);
+        console.log('[webhook] Event type:', event.type);
 
         if (event.type === 'checkout.session.completed') {
           const session = event.data.object;
           const username = session.metadata?.github_username;
+          console.log('[webhook] Username:', username, 'Mode:', session.mode);
 
           if (username) {
-            // line_items에서 priceId 추출은 불가하므로 mode로 type 결정
             const type = session.mode === 'subscription' ? 'monthly' : 'lifetime';
 
             const planData = {
@@ -262,12 +273,16 @@ export default {
             };
 
             await env.PLANS.put(username, JSON.stringify(planData));
+            console.log('[webhook] Plan saved for', username, ':', JSON.stringify(planData));
+          } else {
+            console.error('[webhook] No github_username in metadata');
           }
         }
 
         return new Response('OK', { status: 200 });
       } catch (err) {
-        return new Response('Webhook processing error', { status: 500 });
+        console.error('[webhook] Error:', err.message, err.stack);
+        return new Response(`Webhook error: ${err.message}`, { status: 500 });
       }
     }
 
