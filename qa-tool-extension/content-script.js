@@ -195,6 +195,9 @@
           <button class="qa-feedback-btn" id="qaGitHubSettings">
             <span class="qa-fb-icon">\uD83D\uDD17</span> GitHub 설정
           </button>
+          <button class="qa-feedback-btn" id="qaGhIssueList" style="display:none;">
+            <span class="qa-fb-icon">\uD83D\uDCCB</span> 이슈 현황
+          </button>
         </div>
       </div>
     `;
@@ -214,6 +217,12 @@
     qs('#qaSessionLoad').onclick = loadSessionList;
     qs('#qaMarkdownImport').onclick = showMarkdownImport;
     qs('#qaGitHubSettings').onclick = showGitHubSettings;
+    qs('#qaGhIssueList').onclick = showGitHubIssueList;
+
+    // GitHub 설정 존재 시 이슈 현황 버튼 표시
+    getGitHubMapping().then(m => {
+      if (m) qs('#qaGhIssueList').style.display = '';
+    });
 
     initPanelDrag();
   }
@@ -2130,8 +2139,16 @@
             <label>Personal Access Token</label>
             <input type="password" id="qaGhToken" placeholder="ghp_..." />
             <div style="font-size:11px;color:#64748b;margin-top:4px;">
-              <a href="https://github.com/settings/tokens" target="_blank" style="color:#3b82f6;">토큰 발급 방법 →</a>
-              <span style="margin-left:8px;">repo 또는 public_repo 권한만 필요합니다</span>
+              <a href="https://github.com/settings/tokens/new" target="_blank" style="color:#3b82f6;">토큰 발급 방법 →</a>
+              <span style="margin-left:8px;">Classic 토큰 → repo 체크만 하세요</span>
+            </div>
+            <div class="qa-gh-guide-toggle" style="margin-top:6px;">
+              <div id="qaGhGuideBtn" style="font-size:11px;color:#94a3b8;cursor:pointer;user-select:none;">❓ 토큰 발급이 처음이신가요?</div>
+              <div id="qaGhGuideContent" style="display:none;font-size:11px;color:#94a3b8;margin-top:6px;padding:8px;background:#0f172a;border-radius:6px;line-height:1.6;">
+                ① 위 링크를 클릭하세요<br>
+                ② "repo" 체크박스 하나만 체크<br>
+                ③ Generate token → 토큰 복사 → 여기에 붙여넣기
+              </div>
             </div>
           </div>
           <div class="qa-gh-field">
@@ -2167,6 +2184,12 @@
       connectionVerified = false;
       setSaveBtnEnabled(false);
     });
+
+    // 가이드 토글
+    qs('#qaGhGuideBtn', overlay).onclick = () => {
+      const content = qs('#qaGhGuideContent', overlay);
+      content.style.display = content.style.display === 'none' ? 'block' : 'none';
+    };
 
     // 기존 설정 로드
     loadGitHubSettings().then(settings => {
@@ -2260,12 +2283,87 @@
       await saveGitHubSettings(settings);
       overlay.remove();
       showToast('GitHub 설정이 저장되었습니다.');
+      // 이슈 현황 버튼 표시
+      qs('#qaGhIssueList').style.display = '';
     };
 
     qs('#qaGhClose', overlay).onclick = () => overlay.remove();
     setTimeout(() => {
       overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
     }, 100);
+  }
+
+  /* Issue 리스트 조회 */
+  async function fetchGitHubIssues(owner, repo, token, state) {
+    const res = await fetch(
+      `https://api.github.com/repos/${owner}/${repo}/issues?labels=qa-feedback&state=${state || 'all'}&per_page=20`,
+      { headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/vnd.github.v3+json' } }
+    );
+    if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+    return res.json();
+  }
+
+  async function showGitHubIssueList() {
+    const mapping = await getGitHubMapping();
+    if (!mapping) {
+      showToast('GitHub 설정이 필요합니다.');
+      return;
+    }
+
+    const overlay = ce('div', 'qa-feedback-output-overlay');
+    overlay.innerHTML = `
+      <div class="qa-feedback-output-modal" style="max-width:500px;">
+        <div class="qa-feedback-output-modal-header">
+          <h3>\uD83D\uDCCB GitHub 이슈 현황</h3>
+          <button onclick="this.closest('.qa-feedback-output-overlay').remove()" style="background:none;border:none;font-size:18px;cursor:pointer;color:#94a3b8;">\u2715</button>
+        </div>
+        <div id="qaGhIssueListBody" style="padding:16px 20px;overflow-y:auto;max-height:60vh;">
+          <div style="text-align:center;color:#94a3b8;padding:20px;">이슈 불러오는 중...</div>
+        </div>
+        <div class="qa-feedback-output-actions">
+          <button style="background:#f1f5f9;color:#475569;" onclick="this.closest('.qa-feedback-output-overlay').remove()">닫기</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+    overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+
+    const body = qs('#qaGhIssueListBody', overlay);
+
+    try {
+      const issues = await fetchGitHubIssues(mapping.repoOwner, mapping.repoName, mapping.token);
+
+      if (issues.length === 0) {
+        body.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:20px;">아직 전송된 이슈가 없습니다.</div>';
+        return;
+      }
+
+      body.innerHTML = `<div style="font-size:12px;color:#94a3b8;margin-bottom:12px;">${mapping.repoOwner}/${mapping.repoName} — ${issues.length}건</div>` +
+        issues.map(issue => {
+          const stateIcon = issue.state === 'open' ? '\uD83D\uDFE2' : '\u2705';
+          const date = issue.created_at ? issue.created_at.slice(0, 10) : '';
+          return `
+            <div class="qa-gh-issue-item" data-url="${issue.html_url}" style="padding:10px 12px;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:8px;cursor:pointer;transition:background .15s;">
+              <div style="font-size:13px;font-weight:500;color:#1e293b;">${stateIcon} ${issue.title}</div>
+              <div style="font-size:11px;color:#94a3b8;margin-top:4px;">${date}</div>
+            </div>
+          `;
+        }).join('');
+
+      body.querySelectorAll('.qa-gh-issue-item').forEach(item => {
+        item.onmouseenter = () => { item.style.background = '#f8fafc'; };
+        item.onmouseleave = () => { item.style.background = ''; };
+        item.onclick = () => window.open(item.dataset.url, '_blank');
+      });
+
+    } catch(err) {
+      const msg = err.message || '';
+      if (msg.includes('401')) {
+        body.innerHTML = '<div style="text-align:center;color:#ef4444;padding:20px;">토큰이 만료되었습니다. 설정에서 재발급하세요.</div>';
+      } else {
+        body.innerHTML = '<div style="text-align:center;color:#ef4444;padding:20px;">이슈를 불러올 수 없습니다. 설정을 확인하세요.</div>';
+      }
+    }
   }
 
   /* Issue 생성 */
