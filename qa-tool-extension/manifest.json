@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "QA Feedback Tool",
+  "name": "PinThat",
   "version": "3.0.0",
-  "description": "Visual QA feedback tool for web projects",
+  "description": "Pin it, remember it, share it — visual QA feedback tool",
   "permissions": ["activeTab", "storage", "clipboardWrite"],
   "host_permissions": ["https://api.github.com/*"],
   "content_scripts": [

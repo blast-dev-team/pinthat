@@ -80,6 +80,7 @@
 
   /* ===== Helpers ===== */
   function qs(s, root) { return (root || document).querySelector(s); }
+  function escapeHtml(str) { const d = document.createElement('div'); d.textContent = str; return d.innerHTML; }
   function ce(tag, cls, html) {
     const el = document.createElement(tag);
     if (cls) el.className = cls;
@@ -2218,7 +2219,7 @@
 
         if (res.ok) {
           const data = await res.json();
-          resultEl.innerHTML = `<span style="color:#22c55e;">✅ 연결 성공 — ${data.full_name} (${data.private ? '비공개' : '공개'})</span>`;
+          resultEl.innerHTML = `<span style="color:#22c55e;">✅ 연결 성공 — ${escapeHtml(data.full_name)} (${data.private ? '비공개' : '공개'})</span>`;
           connectionVerified = true;
           setSaveBtnEnabled(true);
         } else if (res.status === 401) {
@@ -2390,7 +2391,7 @@
 
         body.innerHTML = issues.map(issue => {
           const isOpen = issue.state === 'open';
-          const icon = isOpen ? '\uD83D\uDFE2' : '\u2705';
+          const icon = isOpen ? '\uD83D\uDD34' : '\u2705';
           const date = issue.created_at ? issue.created_at.slice(0, 10) : '';
           const isSamePage = issue.title && issue.title.includes(currentPath);
           const reviewBtn = (!isOpen && isSamePage) ? `<button class="qa-gh-action-btn qa-gh-review-btn" data-number="${issue.number}" data-url="${issue.html_url}" data-title="${issue.title.replace(/"/g, '&quot;')}">재검수</button>` : '';
