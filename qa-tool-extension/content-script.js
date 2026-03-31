@@ -8,7 +8,6 @@
     feedbacks: [],
     nextId: 1,
     detailLevel: 'standard',
-    animPaused: false,
     panelCollapsed: false,
     panelPos: null,
     reviewMode: false,
@@ -168,9 +167,6 @@
           <button class="qa-feedback-btn" id="qaModeElement" disabled>
             <span class="qa-fb-icon">\uD83D\uDCCC</span> 요소 선택 <span class="qa-feedback-badge-count" id="qaCount">0</span> <span class="qa-shortcut-hint" data-action="element" style="font-size:10px;color:#64748b;margin-left:auto;">1</span>
           </button>
-          <button class="qa-feedback-btn" id="qaAnimPause" disabled>
-            <span class="qa-fb-icon">\u23F8\uFE0F</span> 애니메이션 중지
-          </button>
           <div class="qa-feedback-sep"></div>
           <button class="qa-feedback-btn" id="qaExport">
             <span class="qa-fb-icon">\uD83D\uDCCB</span> 마크다운 출력 <span class="qa-shortcut-hint" data-action="export" style="font-size:10px;color:#64748b;margin-left:auto;">E</span>
@@ -210,7 +206,6 @@
     qs('#qaCollapseBtn').onclick = toggleCollapse;
     qs('#qaToggleMode').onclick = toggleActive;
     qs('#qaModeElement').onclick = () => { STATE.mode = 'element'; updateModeButton(); };
-    qs('#qaAnimPause').onclick = toggleAnimPause;
     qs('#qaExport').onclick = showOutput;
     qs('#qaReset').onclick = resetAll;
     qs('#qaSessionSave').onclick = saveSession;
@@ -238,7 +233,7 @@
     const btn = qs('#qaToggleMode');
     btn.classList.toggle('active', STATE.active);
     btn.innerHTML = `<span class="qa-fb-icon">\uD83D\uDD0D</span> 검수 모드 ${STATE.active ? 'ON' : 'OFF'}`;
-    const modeBtns = ['#qaModeElement','#qaAnimPause','#qaReset'];
+    const modeBtns = ['#qaModeElement','#qaReset'];
     modeBtns.forEach(s => { qs(s).disabled = !STATE.active; });
     if (STATE.active) {
       STATE.mode = 'element';
@@ -253,24 +248,6 @@
   function updateModeButton() {
     const btn = qs('#qaModeElement');
     if (btn) btn.classList.toggle('active', STATE.active && STATE.mode === 'element');
-  }
-
-  function toggleAnimPause() {
-    STATE.animPaused = !STATE.animPaused;
-    document.documentElement.style.setProperty('--qa-anim', STATE.animPaused ? 'paused' : 'running');
-    if (STATE.animPaused) {
-      if (!qs('#qaAnimStyle')) {
-        const s = ce('style');
-        s.id = 'qaAnimStyle';
-        s.textContent = '*, *::before, *::after { animation-play-state: paused !important; transition-duration: 0s !important; }';
-        document.head.appendChild(s);
-      }
-    } else {
-      const s = qs('#qaAnimStyle');
-      if (s) s.remove();
-    }
-    qs('#qaAnimPause').classList.toggle('active', STATE.animPaused);
-    qs('#qaAnimPause').innerHTML = `<span class="qa-fb-icon">\u23F8\uFE0F</span> 애니메이션 ${STATE.animPaused ? '재개' : '중지'}`;
   }
 
   function updateCount() {
