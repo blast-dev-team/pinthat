@@ -2105,50 +2105,60 @@
   async function getGitHubMapping() {
     const settings = await loadGitHubSettings();
     const origin = location.origin;
-    return settings.mappings.find(m => {
+    const mapping = settings.mappings.find(m => {
       if (m.matchMode === 'exact') return m.urlPattern === origin;
       return origin.includes(m.urlPattern);
     }) || null;
+    if (!mapping) return null;
+    // 토큰 하위 호환: auth.token → mapping.token 순서
+    const token = (settings.auth && settings.auth.token) || mapping.token;
+    return { ...mapping, token };
   }
 
   function showGitHubSettings() {
     const overlay = ce('div', 'qa-settings-overlay');
 
     overlay.innerHTML = `
-      <div class="qa-settings-modal" style="width:420px;">
+      <div class="qa-settings-modal" style="width:420px;max-height:85vh;display:flex;flex-direction:column;">
         <div class="qa-settings-modal-header">
           <h3>\uD83D\uDD17 GitHub 연동 설정</h3>
         </div>
-        <div class="qa-settings-modal-body" id="qaGhSettingsBody">
-          <div class="qa-gh-field">
-            <label>현재 사이트</label>
-            <div class="qa-gh-origin">${location.origin}</div>
-          </div>
-          <div class="qa-gh-field">
-            <label>GitHub 레포 <span style="color:#64748b;font-weight:400;">(owner/repo 또는 URL)</span></label>
-            <input type="text" id="qaGhRepo" placeholder="owner/repo 또는 GitHub URL" />
-          </div>
-          <div class="qa-gh-field">
-            <label>Personal Access Token</label>
-            <input type="password" id="qaGhToken" placeholder="ghp_..." />
-            <div style="font-size:11px;color:#64748b;margin-top:4px;">
-              <a href="https://github.com/settings/tokens/new" target="_blank" style="color:#3b82f6;">토큰 발급 방법 →</a>
-              <span style="margin-left:8px;">Classic 토큰 → repo 체크만 하세요</span>
+        <div class="qa-settings-modal-body" id="qaGhSettingsBody" style="overflow-y:auto;flex:1;">
+          <div id="qaGhAuthSection"></div>
+          <div id="qaGhRepoSection" style="display:none;">
+            <div class="qa-gh-field">
+              <label>현재 사이트</label>
+              <div class="qa-gh-origin">${location.origin}</div>
             </div>
-            <div class="qa-gh-guide-toggle" style="margin-top:6px;">
-              <div id="qaGhGuideBtn" style="font-size:11px;color:#94a3b8;cursor:pointer;user-select:none;">❓ 토큰 발급이 처음이신가요?</div>
-              <div id="qaGhGuideContent" style="display:none;font-size:11px;color:#94a3b8;margin-top:6px;padding:8px;background:#0f172a;border-radius:6px;line-height:1.6;">
-                ① 위 링크를 클릭하세요<br>
-                ② "repo" 체크박스 하나만 체크<br>
-                ③ Generate token → 토큰 복사 → 여기에 붙여넣기
+            <div class="qa-gh-field">
+              <label>레포 선택</label>
+              <select id="qaGhRepoSelect" style="width:100%;padding:10px;border:1px solid #475569;border-radius:8px;background:#0f172a;color:#e2e8f0;font-size:13px;outline:none;">
+                <option value="">레포를 선택하세요...</option>
+              </select>
+            </div>
+          </div>
+          <div style="margin-top:16px;border-top:1px solid #334155;padding-top:12px;">
+            <div id="qaGhPatToggle" style="font-size:12px;color:#94a3b8;cursor:pointer;user-select:none;">\u25B6 토큰 직접 입력</div>
+            <div id="qaGhPatSection" style="display:none;margin-top:10px;">
+              <div class="qa-gh-field">
+                <label>GitHub 레포 <span style="color:#64748b;font-weight:400;">(owner/repo 또는 URL)</span></label>
+                <input type="text" id="qaGhRepo" placeholder="owner/repo 또는 GitHub URL" />
+              </div>
+              <div class="qa-gh-field">
+                <label>Personal Access Token</label>
+                <input type="password" id="qaGhToken" placeholder="ghp_..." />
+                <div style="font-size:11px;color:#64748b;margin-top:4px;">
+                  <a href="https://github.com/settings/tokens/new" target="_blank" style="color:#3b82f6;">토큰 발급 →</a>
+                  <span style="margin-left:6px;">Classic → repo 체크</span>
+                </div>
+              </div>
+              <div class="qa-gh-field">
+                <button class="qa-feedback-btn" id="qaGhTest" style="width:100%;justify-content:center;">
+                  <span class="qa-fb-icon">\uD83D\uDD0D</span> 연결 테스트
+                </button>
+                <div id="qaGhTestResult" style="font-size:12px;margin-top:6px;min-height:18px;"></div>
               </div>
             </div>
-          </div>
-          <div class="qa-gh-field">
-            <button class="qa-feedback-btn" id="qaGhTest" style="width:100%;justify-content:center;">
-              <span class="qa-fb-icon">\uD83D\uDD0D</span> 연결 테스트
-            </button>
-            <div id="qaGhTestResult" style="font-size:12px;margin-top:6px;min-height:18px;"></div>
           </div>
         </div>
         <div class="qa-settings-modal-footer">
@@ -2160,6 +2170,8 @@
     document.body.appendChild(overlay);
 
     let connectionVerified = false;
+    let oauthToken = null;
+    let selectedRepo = null;
 
     function setSaveBtnEnabled(enabled) {
       const saveBtn = qs('#qaGhSave', overlay);
@@ -2168,32 +2180,127 @@
       saveBtn.style.pointerEvents = enabled ? 'auto' : 'none';
     }
 
-    // 입력 변경 시 검증 상태 리셋
-    qs('#qaGhRepo', overlay).addEventListener('input', () => {
-      connectionVerified = false;
-      setSaveBtnEnabled(false);
-    });
-    qs('#qaGhToken', overlay).addEventListener('input', () => {
-      connectionVerified = false;
-      setSaveBtnEnabled(false);
-    });
+    // OAuth 상태에 따라 UI 렌더
+    async function renderAuthSection() {
+      const settings = await loadGitHubSettings();
+      const authSection = qs('#qaGhAuthSection', overlay);
+      const repoSection = qs('#qaGhRepoSection', overlay);
 
-    // 가이드 토글
-    qs('#qaGhGuideBtn', overlay).onclick = () => {
-      const content = qs('#qaGhGuideContent', overlay);
-      content.style.display = content.style.display === 'none' ? 'block' : 'none';
+      if (settings.auth && settings.auth.token) {
+        oauthToken = settings.auth.token;
+        authSection.innerHTML = `
+          <div style="display:flex;align-items:center;gap:10px;padding:8px 0;">
+            <img src="${escapeHtml(settings.auth.avatarUrl || '')}" style="width:32px;height:32px;border-radius:50%;border:1px solid #475569;" />
+            <div>
+              <div style="font-size:13px;font-weight:600;color:#22c55e;">\u2705 @${escapeHtml(settings.auth.username || '')} 연결됨</div>
+              <div style="font-size:11px;color:#64748b;">OAuth 로그인</div>
+            </div>
+            <button id="qaGhDisconnect" style="margin-left:auto;padding:4px 10px;border-radius:6px;font-size:11px;border:1px solid #ef4444;color:#ef4444;background:none;cursor:pointer;">연결 해제</button>
+          </div>
+        `;
+        repoSection.style.display = '';
+        loadRepoList(oauthToken);
+
+        qs('#qaGhDisconnect', overlay).onclick = async () => {
+          const s = await loadGitHubSettings();
+          delete s.auth;
+          await saveGitHubSettings(s);
+          oauthToken = null;
+          connectionVerified = false;
+          setSaveBtnEnabled(false);
+          renderAuthSection();
+          showToast('GitHub 연결이 해제되었습니다.');
+        };
+      } else {
+        repoSection.style.display = 'none';
+        authSection.innerHTML = `
+          <div class="qa-gh-field">
+            <button class="qa-feedback-btn" id="qaGhOAuthBtn" style="width:100%;justify-content:center;background:#24292f;color:#fff;border-radius:8px;padding:12px;">
+              <span class="qa-fb-icon">\uD83D\uDC19</span> GitHub로 로그인
+            </button>
+          </div>
+        `;
+
+        qs('#qaGhOAuthBtn', overlay).onclick = () => {
+          qs('#qaGhOAuthBtn', overlay).textContent = '로그인 중...';
+          qs('#qaGhOAuthBtn', overlay).disabled = true;
+
+          chrome.runtime.sendMessage({ action: 'github-oauth-login' }, async (response) => {
+            if (!response || response.error) {
+              showToast(response ? response.error : 'OAuth 로그인 실패');
+              qs('#qaGhOAuthBtn', overlay).textContent = '\uD83D\uDC19 GitHub로 로그인';
+              qs('#qaGhOAuthBtn', overlay).disabled = false;
+              return;
+            }
+
+            // auth 저장
+            const settings = await loadGitHubSettings();
+            settings.auth = {
+              method: 'oauth',
+              token: response.token,
+              username: response.username,
+              avatarUrl: response.avatarUrl
+            };
+            await saveGitHubSettings(settings);
+            oauthToken = response.token;
+            renderAuthSection();
+            showToast(`GitHub 연결 완료 — @${response.username}`);
+          });
+        };
+      }
+    }
+
+    // 레포 목록 로드
+    function loadRepoList(token) {
+      const select = qs('#qaGhRepoSelect', overlay);
+      select.innerHTML = '<option value="">레포 불러오는 중...</option>';
+
+      chrome.runtime.sendMessage({ action: 'github-fetch-repos', token }, (response) => {
+        if (!response || response.error) {
+          select.innerHTML = '<option value="">레포를 불러올 수 없습니다.</option>';
+          return;
+        }
+
+        select.innerHTML = '<option value="">레포를 선택하세요...</option>' +
+          response.repos.map(r =>
+            `<option value="${r.owner}/${r.name}" data-owner="${r.owner}" data-name="${r.name}">${r.full_name}${r.private ? ' 🔒' : ''}</option>`
+          ).join('');
+
+        // 기존 매핑이 있으면 선택
+        loadGitHubSettings().then(settings => {
+          const mapping = settings.mappings.find(m => m.urlPattern === location.origin);
+          if (mapping) {
+            select.value = mapping.repoOwner + '/' + mapping.repoName;
+            connectionVerified = true;
+            setSaveBtnEnabled(true);
+          }
+        });
+      });
+
+      select.onchange = () => {
+        if (select.value) {
+          const opt = select.selectedOptions[0];
+          selectedRepo = { owner: opt.dataset.owner, name: opt.dataset.name };
+          connectionVerified = true;
+          setSaveBtnEnabled(true);
+        } else {
+          selectedRepo = null;
+          connectionVerified = false;
+          setSaveBtnEnabled(false);
+        }
+      };
+    }
+
+    // PAT 접이식 토글
+    qs('#qaGhPatToggle', overlay).onclick = () => {
+      const section = qs('#qaGhPatSection', overlay);
+      const isHidden = section.style.display === 'none';
+      section.style.display = isHidden ? '' : 'none';
+      qs('#qaGhPatToggle', overlay).textContent = isHidden ? '\u25BC 토큰 직접 입력' : '\u25B6 토큰 직접 입력';
     };
 
-    // 기존 설정 로드
-    loadGitHubSettings().then(settings => {
-      const mapping = settings.mappings.find(m => m.urlPattern === location.origin);
-      if (mapping) {
-        qs('#qaGhRepo', overlay).value = mapping.repoOwner + '/' + mapping.repoName;
-        qs('#qaGhToken', overlay).value = mapping.token;
-      }
-    });
-
-    // 연결 테스트
+    // PAT 연결 테스트
+    let patVerified = false;
     qs('#qaGhTest', overlay).onclick = async () => {
       const resultEl = qs('#qaGhTestResult', overlay);
       const repoVal = qs('#qaGhRepo', overlay).value.trim();
@@ -2203,7 +2310,6 @@
         resultEl.innerHTML = '<span style="color:#ef4444;">레포와 토큰을 모두 입력하세요.</span>';
         return;
       }
-
       const parsed = parseRepoInput(repoVal);
       if (!parsed) {
         resultEl.innerHTML = '<span style="color:#ef4444;">owner/repo 또는 GitHub URL 형식으로 입력하세요.</span>';
@@ -2211,72 +2317,71 @@
       }
 
       resultEl.innerHTML = '<span style="color:#94a3b8;">테스트 중...</span>';
-
       try {
         const res = await fetch(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}`, {
           headers: { 'Authorization': `Bearer ${tokenVal}`, 'Accept': 'application/vnd.github.v3+json' }
         });
-
         if (res.ok) {
           const data = await res.json();
-          resultEl.innerHTML = `<span style="color:#22c55e;">✅ 연결 성공 — ${escapeHtml(data.full_name)} (${data.private ? '비공개' : '공개'})</span>`;
+          resultEl.innerHTML = `<span style="color:#22c55e;">\u2705 연결 성공 — ${escapeHtml(data.full_name)}</span>`;
+          patVerified = true;
           connectionVerified = true;
           setSaveBtnEnabled(true);
         } else if (res.status === 401) {
-          resultEl.innerHTML = '<span style="color:#ef4444;">❌ 토큰이 유효하지 않습니다. 재발급하세요.</span>';
-        } else if (res.status === 403) {
-          resultEl.innerHTML = '<span style="color:#ef4444;">❌ 권한이 없습니다. 토큰 권한을 확인하세요.</span>';
+          resultEl.innerHTML = '<span style="color:#ef4444;">\u274C 토큰이 유효하지 않습니다.</span>';
         } else if (res.status === 404) {
-          resultEl.innerHTML = '<span style="color:#ef4444;">❌ 레포를 찾을 수 없습니다. owner/repo를 확인하세요.</span>';
+          resultEl.innerHTML = '<span style="color:#ef4444;">\u274C 레포를 찾을 수 없습니다.</span>';
         } else {
-          resultEl.innerHTML = `<span style="color:#ef4444;">❌ 오류 (${res.status})</span>`;
+          resultEl.innerHTML = `<span style="color:#ef4444;">\u274C 오류 (${res.status})</span>`;
         }
       } catch(err) {
-        resultEl.innerHTML = '<span style="color:#ef4444;">❌ 네트워크 오류</span>';
+        resultEl.innerHTML = '<span style="color:#ef4444;">\u274C 네트워크 오류</span>';
       }
     };
+
+    qs('#qaGhRepo', overlay).addEventListener('input', () => { patVerified = false; connectionVerified = false; setSaveBtnEnabled(false); });
+    qs('#qaGhToken', overlay).addEventListener('input', () => { patVerified = false; connectionVerified = false; setSaveBtnEnabled(false); });
 
     // 저장
     qs('#qaGhSave', overlay).onclick = async () => {
       if (!connectionVerified) {
-        showToast('먼저 연결 테스트를 완료하세요.');
-        return;
-      }
-
-      const repoVal = qs('#qaGhRepo', overlay).value.trim();
-      const tokenVal = qs('#qaGhToken', overlay).value.trim();
-
-      if (!repoVal || !tokenVal) {
-        showToast('레포와 토큰을 모두 입력하세요.');
-        return;
-      }
-
-      const parsed = parseRepoInput(repoVal);
-      if (!parsed) {
-        showToast('owner/repo 또는 GitHub URL 형식으로 입력하세요.');
+        showToast('먼저 로그인하거나 연결 테스트를 완료하세요.');
         return;
       }
 
       const settings = await loadGitHubSettings();
-      const existingIdx = settings.mappings.findIndex(m => m.urlPattern === location.origin);
-      const mapping = {
-        urlPattern: location.origin,
-        matchMode: 'exact',
-        repoOwner: parsed.owner,
-        repoName: parsed.repo,
-        token: tokenVal,
-      };
+      let owner, name, token;
 
-      if (existingIdx >= 0) {
-        settings.mappings[existingIdx] = mapping;
+      if (oauthToken && selectedRepo) {
+        // OAuth 방식
+        owner = selectedRepo.owner;
+        name = selectedRepo.name;
+        token = oauthToken;
+      } else if (patVerified) {
+        // PAT 방식
+        const repoVal = qs('#qaGhRepo', overlay).value.trim();
+        const tokenVal = qs('#qaGhToken', overlay).value.trim();
+        const parsed = parseRepoInput(repoVal);
+        if (!parsed || !tokenVal) { showToast('입력값을 확인하세요.'); return; }
+        owner = parsed.owner;
+        name = parsed.repo;
+        token = tokenVal;
+        // PAT auth 저장
+        settings.auth = { method: 'pat', token: tokenVal, username: owner, avatarUrl: '' };
       } else {
-        settings.mappings.push(mapping);
+        showToast('로그인 또는 연결 테스트를 먼저 완료하세요.');
+        return;
       }
+
+      const existingIdx = settings.mappings.findIndex(m => m.urlPattern === location.origin);
+      const mapping = { urlPattern: location.origin, matchMode: 'exact', repoOwner: owner, repoName: name };
+
+      if (existingIdx >= 0) settings.mappings[existingIdx] = mapping;
+      else settings.mappings.push(mapping);
 
       await saveGitHubSettings(settings);
       overlay.remove();
       showToast('GitHub 설정이 저장되었습니다.');
-      // 이슈 현황 버튼 표시
       qs('#qaGhIssueList').style.display = '';
     };
 
@@ -2284,6 +2389,8 @@
     setTimeout(() => {
       overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
     }, 100);
+
+    renderAuthSection();
   }
 
   /* Issue 리스트 조회 */

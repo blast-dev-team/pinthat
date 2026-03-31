@@ -3,8 +3,8 @@
   "name": "PinThat",
   "version": "3.0.0",
   "description": "Pin it, remember it, share it — visual QA feedback tool",
-  "permissions": ["activeTab", "storage", "clipboardWrite"],
-  "host_permissions": ["https://api.github.com/*"],
+  "permissions": ["activeTab", "storage", "clipboardWrite", "identity"],
+  "host_permissions": ["https://api.github.com/*", "https://pinthat-auth.el-lee.workers.dev/*"],
   "content_scripts": [
     {
       "matches": ["http://*/*", "https://*/*"],
