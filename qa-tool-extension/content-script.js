@@ -2143,11 +2143,30 @@
         </div>
         <div class="qa-settings-modal-footer">
           <button class="qa-settings-btn-close" id="qaGhClose">닫기</button>
-          <button class="qa-settings-btn-save" id="qaGhSave">저장</button>
+          <button class="qa-settings-btn-save" id="qaGhSave" style="opacity:0.5;cursor:not-allowed;pointer-events:none;">저장</button>
         </div>
       </div>
     `;
     document.body.appendChild(overlay);
+
+    let connectionVerified = false;
+
+    function setSaveBtnEnabled(enabled) {
+      const saveBtn = qs('#qaGhSave', overlay);
+      saveBtn.style.opacity = enabled ? '1' : '0.5';
+      saveBtn.style.cursor = enabled ? 'pointer' : 'not-allowed';
+      saveBtn.style.pointerEvents = enabled ? 'auto' : 'none';
+    }
+
+    // 입력 변경 시 검증 상태 리셋
+    qs('#qaGhRepo', overlay).addEventListener('input', () => {
+      connectionVerified = false;
+      setSaveBtnEnabled(false);
+    });
+    qs('#qaGhToken', overlay).addEventListener('input', () => {
+      connectionVerified = false;
+      setSaveBtnEnabled(false);
+    });
 
     // 기존 설정 로드
     loadGitHubSettings().then(settings => {
@@ -2185,6 +2204,8 @@
         if (res.ok) {
           const data = await res.json();
           resultEl.innerHTML = `<span style="color:#22c55e;">✅ 연결 성공 — ${data.full_name} (${data.private ? '비공개' : '공개'})</span>`;
+          connectionVerified = true;
+          setSaveBtnEnabled(true);
         } else if (res.status === 401) {
           resultEl.innerHTML = '<span style="color:#ef4444;">❌ 토큰이 유효하지 않습니다. 재발급하세요.</span>';
         } else if (res.status === 403) {
@@ -2201,6 +2222,11 @@
 
     // 저장
     qs('#qaGhSave', overlay).onclick = async () => {
+      if (!connectionVerified) {
+        showToast('먼저 연결 테스트를 완료하세요.');
+        return;
+      }
+
       const repoVal = qs('#qaGhRepo', overlay).value.trim();
       const tokenVal = qs('#qaGhToken', overlay).value.trim();
 
