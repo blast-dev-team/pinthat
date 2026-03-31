@@ -2092,6 +2092,15 @@
   /* ===== GitHub Integration ===== */
   const GH_SETTINGS_KEY = 'qa-github-settings';
 
+  function parseRepoInput(input) {
+    input = input.trim();
+    const urlMatch = input.match(/github\.com\/([^\/]+)\/([^\/\s#?]+)/);
+    if (urlMatch) return { owner: urlMatch[1], repo: urlMatch[2] };
+    const parts = input.split('/');
+    if (parts.length === 2 && parts[0] && parts[1]) return { owner: parts[0], repo: parts[1] };
+    return null;
+  }
+
   async function loadGitHubSettings() {
     try {
       const result = await chrome.storage.local.get(GH_SETTINGS_KEY);
@@ -2126,8 +2135,8 @@
             <div class="qa-gh-origin">${location.origin}</div>
           </div>
           <div class="qa-gh-field">
-            <label>GitHub 레포 <span style="color:#64748b;font-weight:400;">(owner/repo)</span></label>
-            <input type="text" id="qaGhRepo" placeholder="예: Leeyeonjin2001/my-project" />
+            <label>GitHub 레포 <span style="color:#64748b;font-weight:400;">(owner/repo 또는 URL)</span></label>
+            <input type="text" id="qaGhRepo" placeholder="owner/repo 또는 GitHub URL" />
           </div>
           <div class="qa-gh-field">
             <label>Personal Access Token</label>
@@ -2205,16 +2214,16 @@
         return;
       }
 
-      const parts = repoVal.split('/');
-      if (parts.length !== 2) {
-        resultEl.innerHTML = '<span style="color:#ef4444;">owner/repo 형식으로 입력하세요.</span>';
+      const parsed = parseRepoInput(repoVal);
+      if (!parsed) {
+        resultEl.innerHTML = '<span style="color:#ef4444;">owner/repo 또는 GitHub URL 형식으로 입력하세요.</span>';
         return;
       }
 
       resultEl.innerHTML = '<span style="color:#94a3b8;">테스트 중...</span>';
 
       try {
-        const res = await fetch(`https://api.github.com/repos/${parts[0]}/${parts[1]}`, {
+        const res = await fetch(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}`, {
           headers: { 'Authorization': `Bearer ${tokenVal}`, 'Accept': 'application/vnd.github.v3+json' }
         });
 
@@ -2252,9 +2261,9 @@
         return;
       }
 
-      const parts = repoVal.split('/');
-      if (parts.length !== 2) {
-        showToast('owner/repo 형식으로 입력하세요.');
+      const parsed = parseRepoInput(repoVal);
+      if (!parsed) {
+        showToast('owner/repo 또는 GitHub URL 형식으로 입력하세요.');
         return;
       }
 
@@ -2263,8 +2272,8 @@
       const mapping = {
         urlPattern: location.origin,
         matchMode: 'exact',
-        repoOwner: parts[0],
-        repoName: parts[1],
+        repoOwner: parsed.owner,
+        repoName: parsed.repo,
         token: tokenVal,
       };
 
