@@ -7,7 +7,6 @@
     mode: 'element',
     feedbacks: [],
     nextId: 1,
-    detailLevel: 'standard',
     panelCollapsed: false,
     panelPos: null,
     reviewMode: false,
@@ -957,42 +956,6 @@
     return md;
   }
 
-  function generateDevRequest() {
-    const now = new Date();
-    const dateStr = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0') + '-' + String(now.getDate()).padStart(2,'0');
-    const page = location.pathname.split('/').pop() || 'index.html';
-
-    let md = `# DEV-REQUEST \u2014 ${page}\n> \uC694\uCCAD\uC77C: ${dateStr}\n> \uCD1D \uD53C\uB4DC\uBC31: ${STATE.feedbacks.length}\uAC74\n\n---\n\n`;
-
-    STATE.feedbacks.forEach((fb, i) => {
-      const num = i + 1;
-      const typeTag = fb.fbType || 'UI';
-      const summary = fb.feedback.length > 30 ? fb.feedback.substring(0, 30) + '...' : fb.feedback;
-      const categoryMap = { 'UI': '\uC2A4\uD0C0\uC77C/\uB808\uC774\uC544\uC6C3', '\uAE30\uB2A5': '\uB3D9\uC791/\uB85C\uC9C1', '\uD14D\uC2A4\uD2B8': '\uBB38\uAD6C', '\uC704\uCE58\uC774\uB3D9': '\uC704\uCE58 \uC774\uB3D9' };
-      const category = categoryMap[typeTag] || typeTag;
-
-      md += `### BUG-${String(num).padStart(3,'0')}: [${typeTag}] ${summary}\n`;
-      md += `- **\uC0C1\uD0DC**: \uD83D\uDCCB \uC694\uCCAD\n`;
-      md += `- **\uC694\uCCAD\uC77C**: ${dateStr}\n`;
-      md += `- **\uCE74\uD14C\uACE0\uB9AC**: ${category}\n`;
-      md += `- **\uC11C\uBE44\uC2A4 \uBCF8\uC9C8 \uC5F0\uACB0**: (\uC218\uB3D9 \uC785\uB825)\n`;
-
-      if (fb.selector) {
-        md += `- **\uC218\uC815 \uC704\uCE58**: \`${fb.selector}\`\n`;
-      }
-
-      if (fb.textContent) {
-        md += `- **\uD604\uC7AC \uC0C1\uD0DC**: "${fb.textContent.length > 60 ? fb.textContent.substring(0, 60) + '...' : fb.textContent}"\n`;
-      }
-
-      md += `- **\uC218\uC815 \uB0B4\uC6A9**: ${fb.feedback}\n`;
-      md += `- **\uD14C\uC2A4\uD2B8 \uBC29\uBC95**: \uD574\uB2F9 \uC694\uC18C \uD655\uC778\n`;
-      md += '\n---\n\n';
-    });
-
-    return md;
-  }
-
   function circled(n) {
     const chars = '\u2460\u2461\u2462\u2463\u2464\u2465\u2466\u2467\u2468\u2469\u246A\u246B\u246C\u246D\u246E\u246F\u2470\u2471\u2472\u2473';
     return n <= 20 ? chars[n - 1] : '(' + n + ')';
@@ -1005,25 +968,13 @@
     }
 
     const overlay = ce('div', 'qa-feedback-output-overlay');
-    const md = generateMarkdown(STATE.detailLevel);
-
-    let currentOutputTab = 'markdown';
+    const md = generateMarkdown('detailed');
 
     overlay.innerHTML = `
       <div class="qa-feedback-output-modal">
         <div class="qa-feedback-output-modal-header">
-          <h3>\uCD9C\uB825 (${STATE.feedbacks.length}\uAC74)</h3>
+          <h3>\uB9C8\uD06C\uB2E4\uC6B4 \uCD9C\uB825 (${STATE.feedbacks.length}\uAC74)</h3>
           <button onclick="this.closest('.qa-feedback-output-overlay').remove()" style="background:none;border:none;font-size:18px;cursor:pointer;color:#94a3b8;">\u2715</button>
-        </div>
-        <div class="qa-feedback-output-tabs" id="qaOutputTabs" style="display:flex;gap:0;margin:0 16px;border-bottom:2px solid #e2e8f0;">
-          <button data-tab="markdown" style="flex:1;padding:8px 0;font-size:13px;font-weight:600;border:none;background:none;cursor:pointer;border-bottom:2px solid #1e293b;margin-bottom:-2px;color:#1e293b;">\uB9C8\uD06C\uB2E4\uC6B4</button>
-          <button data-tab="devrequest" style="flex:1;padding:8px 0;font-size:13px;font-weight:500;border:none;background:none;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;color:#94a3b8;">DEV-REQUEST</button>
-        </div>
-        <div class="qa-feedback-output-levels" id="qaOutputLevels">
-          <button data-level="compact">Compact</button>
-          <button data-level="standard">Standard</button>
-          <button data-level="detailed">Detailed</button>
-          <button data-level="forensic">Forensic</button>
         </div>
         <div class="qa-feedback-output-pre">
           <pre id="qaOutputPre"></pre>
@@ -1039,45 +990,7 @@
     document.body.appendChild(overlay);
 
     const pre = qs('#qaOutputPre', overlay);
-    const levelsContainer = qs('#qaOutputLevels', overlay);
     pre.textContent = md;
-
-    function updateOutputContent() {
-      if (currentOutputTab === 'markdown') {
-        pre.textContent = generateMarkdown(STATE.detailLevel);
-      } else {
-        pre.textContent = generateDevRequest();
-      }
-    }
-
-    function updateTabStyles() {
-      qs('#qaOutputTabs', overlay).querySelectorAll('button').forEach(btn => {
-        const isActive = btn.dataset.tab === currentOutputTab;
-        btn.style.borderBottomColor = isActive ? '#1e293b' : 'transparent';
-        btn.style.color = isActive ? '#1e293b' : '#94a3b8';
-        btn.style.fontWeight = isActive ? '600' : '500';
-      });
-      levelsContainer.style.display = currentOutputTab === 'markdown' ? '' : 'none';
-    }
-
-    // 탭 전환
-    qs('#qaOutputTabs', overlay).querySelectorAll('button').forEach(btn => {
-      btn.onclick = () => {
-        currentOutputTab = btn.dataset.tab;
-        updateTabStyles();
-        updateOutputContent();
-      };
-    });
-
-    // 상세도 레벨 (마크다운 탭에서만)
-    levelsContainer.querySelectorAll('button').forEach(btn => {
-      btn.classList.toggle('active', btn.dataset.level === STATE.detailLevel);
-      btn.onclick = () => {
-        STATE.detailLevel = btn.dataset.level;
-        levelsContainer.querySelectorAll('button').forEach(b => b.classList.toggle('active', b === btn));
-        updateOutputContent();
-      };
-    });
 
     qs('#qaCopyBtn', overlay).onclick = () => {
       const text = pre.textContent;
@@ -1187,7 +1100,7 @@
       }
 
       // 선택된 피드백으로 마크다운 생성
-      const md = generateMarkdownForFeedbacks(selectedFeedbacks, STATE.detailLevel);
+      const md = generateMarkdownForFeedbacks(selectedFeedbacks, 'detailed');
       const title = customTitle || `[QA] ${location.pathname.split('/').pop() || 'index'} — 피드백 ${selectedFeedbacks.length}건 (${new Date().toISOString().slice(0, 10)})`;
 
       sendOverlay.remove();
