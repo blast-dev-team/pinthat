@@ -212,7 +212,7 @@
     qs('#qaSessionLoad').onclick = loadSessionList;
     qs('#qaMarkdownImport').onclick = showMarkdownImport;
     qs('#qaGitHubSettings').onclick = showGitHubSettings;
-    qs('#qaGhIssueList').onclick = showGitHubIssueList;
+    qs('#qaGhIssueList').onclick = async () => { if (await requirePro('이슈 현황')) showGitHubIssueList(); };
 
     // GitHub 설정 존재 시 이슈 현황 버튼 표시
     getGitHubMapping().then(m => {
@@ -1001,6 +1001,7 @@
 
     ghIssueBtn.onclick = async () => {
       if (ghIssueBtn.disabled) return;
+      if (!await requirePro('GitHub Issue 전송')) return;
 
       // 중복 전송 경고
       const lastIssue = await getLastIssueHistory();
@@ -2498,6 +2499,7 @@
       body.querySelectorAll('.qa-gh-archive-btn').forEach(btn => {
         btn.onclick = async (e) => {
           e.stopPropagation();
+          if (!await requirePro('이슈 아카이브')) return;
           archivedList.push({ number: parseInt(btn.dataset.number), url: btn.dataset.url, title: btn.dataset.title });
           await saveArchivedIssues(archivedList);
           showToast(`이슈 #${btn.dataset.number} 아카이브됨`);
@@ -2573,6 +2575,7 @@
     };
 
     qs('#qaIssueReviewResend').onclick = async () => {
+      if (!await requirePro('이슈 재전송')) return;
       const mapping = await getGitHubMapping();
       if (!mapping) { showToast('GitHub 설정이 필요합니다.'); return; }
 
@@ -2717,6 +2720,134 @@
       }
     }
     return null;
+  }
+
+  /* ===== Pro Plan Check ===== */
+  const WORKER_BASE = 'https://pinthat-auth.el-lee.workers.dev';
+  const PRICE_MONTHLY = 'price_1TGyk6DYzHZgHbYuaa7l4brX';
+  const PRICE_LIFETIME = 'price_1TGynHDYzHZgHbYuoGARymvh';
+
+  async function checkUserPlan() {
+    const settings = await loadGitHubSettings();
+    if (!settings.auth || !settings.auth.username) return 'free';
+
+    if (settings.planCheckedAt && (Date.now() - settings.planCheckedAt < 3600000)) {
+      return settings.plan || 'free';
+    }
+
+    try {
+      const res = await fetch(`${WORKER_BASE}/check-plan?username=${encodeURIComponent(settings.auth.username)}`);
+      const data = await res.json();
+      settings.plan = data.plan;
+      settings.planCheckedAt = Date.now();
+      await saveGitHubSettings(settings);
+      return data.plan;
+    } catch {
+      return settings.plan || 'free';
+    }
+  }
+
+  async function requirePro(featureName) {
+    const plan = await checkUserPlan();
+    if (plan === 'pro') return true;
+    showProModal(featureName);
+    return false;
+  }
+
+  function showProModal(featureName) {
+    const overlay = ce('div', 'qa-settings-overlay');
+    overlay.innerHTML = `
+      <div class="qa-settings-modal" style="width:380px;">
+        <div class="qa-settings-modal-header">
+          <h3>\u2B50 PinThat Pro</h3>
+        </div>
+        <div class="qa-settings-modal-body" style="text-align:center;">
+          <div style="font-size:14px;color:#e2e8f0;margin-bottom:16px;">
+            <strong>${escapeHtml(featureName)}</strong>은<br>Pro 기능입니다.
+          </div>
+          <div style="display:flex;gap:10px;justify-content:center;margin-bottom:16px;">
+            <div class="qa-feedback-pro-card" data-price="${PRICE_MONTHLY}" style="flex:1;padding:14px;border:1px solid #475569;border-radius:10px;cursor:pointer;transition:border-color .15s;">
+              <div style="font-size:18px;font-weight:700;color:#e2e8f0;">$4.98<span style="font-size:12px;font-weight:400;color:#94a3b8;">/월</span></div>
+              <div style="font-size:11px;color:#94a3b8;margin-top:4px;">구독형</div>
+            </div>
+            <div class="qa-feedback-pro-card" data-price="${PRICE_LIFETIME}" style="flex:1;padding:14px;border:1px solid #475569;border-radius:10px;cursor:pointer;transition:border-color .15s;">
+              <div style="font-size:18px;font-weight:700;color:#e2e8f0;">$19.98</div>
+              <div style="font-size:11px;color:#94a3b8;margin-top:4px;">영구 (1회 결제)</div>
+            </div>
+          </div>
+          <div id="qaProLoginNotice" style="display:none;font-size:12px;color:#f59e0b;margin-bottom:10px;">GitHub 로그인이 필요합니다</div>
+        </div>
+        <div class="qa-settings-modal-footer">
+          <button class="qa-settings-btn-close" id="qaProCancel">나중에</button>
+          <button class="qa-settings-btn-save" id="qaProUpgrade">업그레이드</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+
+    let selectedPrice = null;
+    overlay.querySelectorAll('.qa-feedback-pro-card').forEach(card => {
+      card.onclick = () => {
+        overlay.querySelectorAll('.qa-feedback-pro-card').forEach(c => { c.style.borderColor = '#475569'; });
+        card.style.borderColor = '#3b82f6';
+        selectedPrice = card.dataset.price;
+      };
+    });
+
+    // 미로그인 체크
+    loadGitHubSettings().then(settings => {
+      if (!settings.auth || !settings.auth.username) {
+        qs('#qaProLoginNotice', overlay).style.display = '';
+      }
+    });
+
+    qs('#qaProCancel', overlay).onclick = () => overlay.remove();
+
+    qs('#qaProUpgrade', overlay).onclick = async () => {
+      if (!selectedPrice) {
+        showToast('플랜을 선택하세요.');
+        return;
+      }
+
+      const settings = await loadGitHubSettings();
+      if (!settings.auth || !settings.auth.username) {
+        showToast('먼저 GitHub 로그인을 해주세요.');
+        return;
+      }
+
+      qs('#qaProUpgrade', overlay).textContent = '처리 중...';
+      qs('#qaProUpgrade', overlay).disabled = true;
+
+      try {
+        const res = await fetch(`${WORKER_BASE}/create-checkout`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            username: settings.auth.username,
+            priceId: selectedPrice,
+            successUrl: location.href,
+            cancelUrl: location.href,
+          })
+        });
+        const data = await res.json();
+        if (data.url) {
+          window.open(data.url, '_blank');
+          overlay.remove();
+        } else {
+          showToast(data.error || '결제 페이지를 열 수 없습니다.');
+          qs('#qaProUpgrade', overlay).textContent = '업그레이드';
+          qs('#qaProUpgrade', overlay).disabled = false;
+        }
+      } catch {
+        showToast('네트워크 오류');
+        qs('#qaProUpgrade', overlay).textContent = '업그레이드';
+        qs('#qaProUpgrade', overlay).disabled = false;
+      }
+    };
+
+    setTimeout(() => {
+      overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+    }, 100);
   }
 
   /* ===== Overlay Visibility ===== */
