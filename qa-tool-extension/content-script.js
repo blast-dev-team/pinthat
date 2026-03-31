@@ -212,7 +212,7 @@
     qs('#qaSessionLoad').onclick = loadSessionList;
     qs('#qaMarkdownImport').onclick = showMarkdownImport;
     qs('#qaGitHubSettings').onclick = showGitHubSettings;
-    qs('#qaGhIssueList').onclick = async () => { if (await requirePro('이슈 현황')) showGitHubIssueList(); };
+    qs('#qaGhIssueList').onclick = showGitHubIssueList;
 
     // GitHub 설정 존재 시 이슈 현황 버튼 표시
     getGitHubMapping().then(m => {
@@ -1001,25 +1001,17 @@
 
     // GitHub Issue 버튼 상태
     const ghIssueBtn = qs('#qaGhIssueBtn', overlay);
-    (async () => {
-      const mapping = await getGitHubMapping();
-      const plan = await checkUserPlan();
+    getGitHubMapping().then(mapping => {
       if (mapping) {
         ghIssueBtn.disabled = false;
-        if (plan !== 'pro') {
-          ghIssueBtn.textContent = '\uD83D\uDD12 GitHub Issue (Pro)';
-          ghIssueBtn.style.opacity = '0.7';
-        }
         ghIssueBtn.title = `${mapping.repoOwner}/${mapping.repoName}에 Issue 생성`;
       } else {
-        ghIssueBtn.title = 'GitHub 설정 필요 — 패널에서 \uD83D\uDD17 GitHub 설정을 먼저 연결하세요';
+        ghIssueBtn.title = 'GitHub 설정 필요';
       }
-    })();
+    });
 
     ghIssueBtn.onclick = async () => {
       if (ghIssueBtn.disabled) return;
-      if (!await requirePro('GitHub Issue 전송')) return;
-
       // 중복 전송 경고
       const lastIssue = await getLastIssueHistory();
       if (lastIssue) {
@@ -2087,7 +2079,7 @@
       if (panel) {
         const showing = panel.style.display === 'none';
         panel.style.display = showing ? '' : 'none';
-        if (showing) checkUserPlan(true);
+        if (showing) applyUserGate();
       }
       toggleActive();
     }
@@ -2144,7 +2136,6 @@
           <h3>\uD83D\uDD17 GitHub 연동 설정</h3>
         </div>
         <div class="qa-settings-modal-body" id="qaGhSettingsBody" style="overflow-y:auto;flex:1;">
-          <div id="qaGhPlanBanner" style="padding:8px 12px;border-radius:8px;font-size:12px;margin-bottom:12px;display:none;"></div>
           <div id="qaGhAuthSection"></div>
           <div id="qaGhRepoSection" style="display:none;">
             <div class="qa-gh-field">
@@ -2204,29 +2195,9 @@
             <button id="qaGhDisconnect" style="margin-left:auto;padding:4px 10px;border-radius:6px;font-size:11px;border:1px solid #ef4444;color:#ef4444;background:none;cursor:pointer;">연결 해제</button>
           </div>
         `;
-        // Pro면 레포 선택 표시, Free면 안내 텍스트
-        const currentPlan = await checkUserPlan();
-        if (currentPlan === 'pro') {
-          repoSection.style.display = '';
-          qs('#qaGhManualRepoArea', overlay).style.display = '';
-          loadRepoList(oauthToken);
-        } else {
-          repoSection.style.display = 'none';
-          qs('#qaGhManualRepoArea', overlay).style.display = 'none';
-          // Free 안내 텍스트
-          let freeNotice = qs('#qaGhFreeNotice', overlay);
-          if (!freeNotice) {
-            freeNotice = ce('div');
-            freeNotice.id = 'qaGhFreeNotice';
-            freeNotice.style.cssText = 'padding:14px;background:#0f172a;border-radius:8px;margin-top:12px;text-align:center;';
-            freeNotice.innerHTML = `
-              <div style="font-size:13px;color:#94a3b8;line-height:1.6;">GitHub 연동은 <strong style="color:#3b82f6;">Pro</strong> 기능입니다.<br>업그레이드하면 Issue 자동 전송을 사용할 수 있습니다.</div>
-              <button id="qaGhFreeUpgrade" style="margin-top:10px;padding:8px 20px;border-radius:8px;font-size:13px;font-weight:600;border:none;background:#3b82f6;color:#fff;cursor:pointer;">Pro로 업그레이드</button>
-            `;
-            authSection.after(freeNotice);
-          }
-          qs('#qaGhFreeUpgrade', overlay).onclick = () => { overlay.remove(); showProModal('GitHub 연동'); };
-        }
+        repoSection.style.display = '';
+        qs('#qaGhManualRepoArea', overlay).style.display = '';
+        loadRepoList(oauthToken);
 
         qs('#qaGhDisconnect', overlay).onclick = async () => {
           const s = await loadGitHubSettings();
@@ -2235,8 +2206,6 @@
           oauthToken = null;
           connectionVerified = false;
           setSaveBtnEnabled(false);
-          const fn = qs('#qaGhFreeNotice', overlay);
-          if (fn) fn.remove();
           renderAuthSection();
           showToast('GitHub 연결이 해제되었습니다.');
         };
@@ -2384,25 +2353,6 @@
     setTimeout(() => {
       overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
     }, 100);
-
-    // 플랜 상태 표시
-    checkUserPlan().then(plan => {
-      const banner = qs('#qaGhPlanBanner', overlay);
-      banner.style.display = '';
-      if (plan === 'pro') {
-        banner.style.background = '#0f172a';
-        banner.style.color = '#22c55e';
-        banner.innerHTML = '\u2B50 현재 플랜: <strong>Pro</strong>';
-      } else {
-        banner.style.background = '#0f172a';
-        banner.style.color = '#94a3b8';
-        banner.innerHTML = '현재 플랜: Free &nbsp;<a id="qaGhUpgradeLink" href="#" style="color:#3b82f6;font-size:12px;">Pro로 업그레이드</a>';
-        setTimeout(() => {
-          const link = qs('#qaGhUpgradeLink', overlay);
-          if (link) link.onclick = (e) => { e.preventDefault(); overlay.remove(); showProModal('GitHub 연동'); };
-        }, 0);
-      }
-    });
 
     renderAuthSection();
   }
@@ -2560,7 +2510,6 @@
       body.querySelectorAll('.qa-gh-archive-btn').forEach(btn => {
         btn.onclick = async (e) => {
           e.stopPropagation();
-          if (!await requirePro('이슈 아카이브')) return;
           archivedList.push({ number: parseInt(btn.dataset.number), url: btn.dataset.url, title: btn.dataset.title });
           await saveArchivedIssues(archivedList);
           showToast(`이슈 #${btn.dataset.number} 아카이브됨`);
@@ -2636,7 +2585,6 @@
     };
 
     qs('#qaIssueReviewResend').onclick = async () => {
-      if (!await requirePro('이슈 재전송')) return;
       const mapping = await getGitHubMapping();
       if (!mapping) { showToast('GitHub 설정이 필요합니다.'); return; }
 
@@ -2783,120 +2731,67 @@
     return null;
   }
 
-  /* ===== Pro Plan Check ===== */
+  /* ===== User Status Check (Trial / Paid / Expired) ===== */
   const WORKER_BASE = 'https://pinthat-auth.el-lee.workers.dev';
-  const PRICE_MONTHLY = 'price_1TGyk6DYzHZgHbYuaa7l4brX';
-  const PRICE_LIFETIME = 'price_1TGynHDYzHZgHbYuoGARymvh';
 
-  async function checkUserPlan(forceRefresh) {
+  async function checkUserStatus(forceRefresh) {
     const settings = await loadGitHubSettings();
-    if (!settings.auth || !settings.auth.username) return 'free';
+    if (!settings.auth || !settings.auth.username) return { status: 'login_required' };
 
-    if (!forceRefresh && settings.planCheckedAt && (Date.now() - settings.planCheckedAt < 300000)) {
-      return settings.plan || 'free';
+    if (!forceRefresh && settings.statusCheckedAt && (Date.now() - settings.statusCheckedAt < 300000)) {
+      return settings.userStatus || { status: 'login_required' };
     }
 
     try {
       const res = await fetch(`${WORKER_BASE}/check-plan?username=${encodeURIComponent(settings.auth.username)}`);
       const data = await res.json();
-      settings.plan = data.plan;
-      settings.planCheckedAt = Date.now();
+      const result = { status: data.plan, daysLeft: data.daysLeft || 0 };
+      settings.userStatus = result;
+      settings.statusCheckedAt = Date.now();
       await saveGitHubSettings(settings);
-      return data.plan;
+      return result;
     } catch {
-      return settings.plan || 'free';
+      return settings.userStatus || { status: 'login_required' };
     }
   }
 
-  async function requirePro(featureName) {
-    const plan = await checkUserPlan();
-    if (plan === 'pro') return true;
-    showProModal(featureName);
-    return false;
-  }
-
-  function showProModal(featureName) {
-    const descriptions = {
-      'GitHub Issue 전송': 'QA 피드백을 GitHub Issue로 자동 전송하는 기능입니다.\n한 번의 클릭으로 개발자에게 수정 요청을 보낼 수 있습니다.',
-      '이슈 현황': 'GitHub에 전송한 이슈들의 상태(Open/Closed)를 실시간으로 확인하는 기능입니다.',
-      '이슈 재전송': '수정이 안 된 이슈를 재오픈하고 코멘트를 자동 추가하는 기능입니다.',
-      '이슈 아카이브': '완료된 이슈를 아카이브하여 목록을 깔끔하게 관리하는 기능입니다.',
-      'GitHub 연동': 'GitHub와 연동하여 Issue 자동 전송, 이슈 현황 조회, 재검수 워크플로우를 사용할 수 있습니다.',
-    };
-    const desc = descriptions[featureName] || `${featureName} 기능을 사용할 수 있습니다.`;
-
+  function showExpiredModal() {
     const overlay = ce('div', 'qa-settings-overlay');
     overlay.innerHTML = `
-      <div class="qa-settings-modal" style="width:400px;">
+      <div class="qa-settings-modal" style="width:380px;">
         <div class="qa-settings-modal-header">
-          <h3>\u2B50 PinThat Pro</h3>
+          <h3>\uD83D\uDCCC PinThat</h3>
         </div>
         <div class="qa-settings-modal-body" style="text-align:center;">
-          <div style="font-size:14px;font-weight:600;color:#e2e8f0;margin-bottom:8px;">${escapeHtml(featureName)}</div>
-          <div style="font-size:13px;color:#94a3b8;line-height:1.6;margin-bottom:16px;white-space:pre-line;">${escapeHtml(desc)}</div>
-          <div id="qaProPlanCards" style="display:none;">
-            <div style="display:flex;gap:10px;justify-content:center;margin-bottom:16px;">
-              <div class="qa-feedback-pro-card" data-price="${PRICE_MONTHLY}" style="flex:1;padding:14px;border:1px solid #475569;border-radius:10px;cursor:pointer;transition:border-color .15s;">
-                <div style="font-size:18px;font-weight:700;color:#e2e8f0;">$4.98<span style="font-size:12px;font-weight:400;color:#94a3b8;">/월</span></div>
-                <div style="font-size:11px;color:#94a3b8;margin-top:4px;">구독형</div>
-              </div>
-              <div class="qa-feedback-pro-card" data-price="${PRICE_LIFETIME}" style="flex:1;padding:14px;border:1px solid #475569;border-radius:10px;cursor:pointer;transition:border-color .15s;">
-                <div style="font-size:18px;font-weight:700;color:#e2e8f0;">$19.98</div>
-                <div style="font-size:11px;color:#94a3b8;margin-top:4px;">영구 (1회 결제)</div>
-              </div>
-            </div>
-            <div id="qaProLoginNotice" style="display:none;font-size:12px;color:#f59e0b;margin-bottom:10px;">GitHub 로그인이 필요합니다</div>
+          <div style="font-size:14px;color:#e2e8f0;margin-bottom:8px;">무료 체험이 종료되었습니다.</div>
+          <div style="font-size:13px;color:#94a3b8;line-height:1.6;margin-bottom:16px;">PinThat을 계속 사용하려면<br>평생이용권을 구매해주세요.</div>
+          <div style="padding:16px;border:1px solid #475569;border-radius:10px;margin-bottom:16px;">
+            <div style="font-size:20px;font-weight:700;color:#e2e8f0;">\uD83D\uDC8E 평생이용권 $8.98</div>
+            <div style="font-size:12px;color:#94a3b8;margin-top:4px;">한 번 결제, 영구 사용</div>
           </div>
+          <div id="qaExpiredUser" style="font-size:11px;color:#64748b;"></div>
         </div>
         <div class="qa-settings-modal-footer">
-          <button class="qa-settings-btn-close" id="qaProCancel">나중에</button>
-          <button class="qa-settings-btn-save" id="qaProStartBtn">Pro 시작하기</button>
-          <button class="qa-settings-btn-save" id="qaProUpgrade" style="display:none;">업그레이드</button>
+          <button class="qa-settings-btn-close" id="qaExpiredCancel">나중에</button>
+          <button class="qa-settings-btn-save" id="qaExpiredBuy">구매하기</button>
         </div>
       </div>
     `;
     document.body.appendChild(overlay);
 
-    let selectedPrice = null;
-
-    // "Pro 시작하기" → 플랜 카드 표시
-    qs('#qaProStartBtn', overlay).onclick = () => {
-      qs('#qaProPlanCards', overlay).style.display = '';
-      qs('#qaProStartBtn', overlay).style.display = 'none';
-      qs('#qaProUpgrade', overlay).style.display = '';
-
-      // 미로그인 체크
-      loadGitHubSettings().then(settings => {
-        if (!settings.auth || !settings.auth.username) {
-          qs('#qaProLoginNotice', overlay).style.display = '';
-        }
-      });
-    };
-
-    overlay.querySelectorAll('.qa-feedback-pro-card').forEach(card => {
-      card.onclick = () => {
-        overlay.querySelectorAll('.qa-feedback-pro-card').forEach(c => { c.style.borderColor = '#475569'; });
-        card.style.borderColor = '#3b82f6';
-        selectedPrice = card.dataset.price;
-      };
+    loadGitHubSettings().then(s => {
+      if (s.auth && s.auth.username) {
+        qs('#qaExpiredUser', overlay).textContent = '@' + s.auth.username + ' 로그인됨';
+      }
     });
 
-    qs('#qaProCancel', overlay).onclick = () => overlay.remove();
-
-    qs('#qaProUpgrade', overlay).onclick = async () => {
-      if (!selectedPrice) {
-        showToast('플랜을 선택하세요.');
-        return;
-      }
-
+    qs('#qaExpiredCancel', overlay).onclick = () => overlay.remove();
+    qs('#qaExpiredBuy', overlay).onclick = async () => {
       const settings = await loadGitHubSettings();
-      if (!settings.auth || !settings.auth.username) {
-        showToast('먼저 GitHub 로그인을 해주세요.');
-        return;
-      }
+      if (!settings.auth || !settings.auth.username) { showToast('로그인이 필요합니다.'); return; }
 
-      qs('#qaProUpgrade', overlay).textContent = '처리 중...';
-      qs('#qaProUpgrade', overlay).disabled = true;
+      qs('#qaExpiredBuy', overlay).textContent = '처리 중...';
+      qs('#qaExpiredBuy', overlay).disabled = true;
 
       try {
         const res = await fetch(`${WORKER_BASE}/create-checkout`, {
@@ -2904,7 +2799,6 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             username: settings.auth.username,
-            priceId: selectedPrice,
             successUrl: location.href,
             cancelUrl: location.href,
           })
@@ -2913,26 +2807,109 @@
         if (data.url) {
           window.open(data.url, '_blank');
           overlay.remove();
-          // 결제 탭에서 돌아왔을 때 캐시 무시하고 플랜 재확인
           window.addEventListener('focus', function onFocus() {
             window.removeEventListener('focus', onFocus);
-            checkUserPlan(true);
+            checkUserStatus(true);
           });
         } else {
           showToast(data.error || '결제 페이지를 열 수 없습니다.');
-          qs('#qaProUpgrade', overlay).textContent = '업그레이드';
-          qs('#qaProUpgrade', overlay).disabled = false;
+          qs('#qaExpiredBuy', overlay).textContent = '구매하기';
+          qs('#qaExpiredBuy', overlay).disabled = false;
         }
       } catch {
         showToast('네트워크 오류');
-        qs('#qaProUpgrade', overlay).textContent = '업그레이드';
-        qs('#qaProUpgrade', overlay).disabled = false;
+        qs('#qaExpiredBuy', overlay).textContent = '구매하기';
+        qs('#qaExpiredBuy', overlay).disabled = false;
       }
     };
 
     setTimeout(() => {
       overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
     }, 100);
+  }
+
+  /* ===== Login Gate + Trial Display ===== */
+  async function applyUserGate() {
+    const panelBody = qs('#qaPanelBody');
+    if (!panelBody) return;
+
+    // 기존 게이트 UI 제거
+    const existingGate = qs('#qaLoginGate');
+    if (existingGate) existingGate.remove();
+    const existingTrialBadge = qs('#qaTrialBadge');
+    if (existingTrialBadge) existingTrialBadge.remove();
+
+    const settings = await loadGitHubSettings();
+
+    // 미로그인 → 로그인 게이트
+    if (!settings.auth || !settings.auth.username) {
+      panelBody.style.display = 'none';
+      const gate = ce('div');
+      gate.id = 'qaLoginGate';
+      gate.style.cssText = 'padding:24px 16px;text-align:center;';
+      gate.innerHTML = `
+        <div style="font-size:13px;color:#94a3b8;line-height:1.6;margin-bottom:16px;">PinThat을 시작하려면<br>GitHub 로그인이 필요합니다.</div>
+        <button class="qa-feedback-btn" id="qaLoginGateBtn" style="width:100%;justify-content:center;background:#24292f;color:#fff;border-radius:8px;padding:12px;">
+          <span class="qa-fb-icon">\uD83D\uDC19</span> GitHub로 로그인
+        </button>
+      `;
+      panelBody.parentNode.appendChild(gate);
+
+      qs('#qaLoginGateBtn').onclick = () => {
+        qs('#qaLoginGateBtn').textContent = '로그인 중...';
+        qs('#qaLoginGateBtn').disabled = true;
+        chrome.runtime.sendMessage({ action: 'github-oauth-login' }, async (response) => {
+          if (!response || response.error) {
+            showToast(response ? response.error : 'OAuth 로그인 실패');
+            qs('#qaLoginGateBtn').textContent = '\uD83D\uDC19 GitHub로 로그인';
+            qs('#qaLoginGateBtn').disabled = false;
+            return;
+          }
+          const s = await loadGitHubSettings();
+          s.auth = { method: 'oauth', token: response.token, username: response.username, avatarUrl: response.avatarUrl };
+          await saveGitHubSettings(s);
+          showToast(`GitHub 연결 완료 — @${response.username}`);
+          applyUserGate();
+        });
+      };
+      return;
+    }
+
+    // 로그인됨 → 상태 체크
+    panelBody.style.display = '';
+    const status = await checkUserStatus(true);
+
+    if (status.status === 'expired') {
+      // 만료 → 전체 잠금
+      panelBody.style.display = 'none';
+      const gate = ce('div');
+      gate.id = 'qaLoginGate';
+      gate.style.cssText = 'padding:24px 16px;text-align:center;';
+      gate.innerHTML = `
+        <div style="font-size:13px;color:#e2e8f0;margin-bottom:8px;">무료 체험이 종료되었습니다.</div>
+        <div style="font-size:12px;color:#94a3b8;line-height:1.6;margin-bottom:16px;">PinThat을 계속 사용하려면<br>평생이용권을 구매해주세요.</div>
+        <div style="padding:12px;border:1px solid #475569;border-radius:8px;margin-bottom:12px;">
+          <div style="font-size:16px;font-weight:700;color:#e2e8f0;">\uD83D\uDC8E $8.98 평생이용권</div>
+          <div style="font-size:11px;color:#94a3b8;margin-top:2px;">한 번 결제, 영구 사용</div>
+        </div>
+        <button class="qa-feedback-btn" id="qaExpiredBuyBtn" style="width:100%;justify-content:center;background:#3b82f6;color:#fff;border-radius:8px;padding:12px;">구매하기</button>
+        <div style="font-size:11px;color:#64748b;margin-top:8px;">@${escapeHtml(settings.auth.username)} 로그인됨</div>
+      `;
+      panelBody.parentNode.appendChild(gate);
+
+      qs('#qaExpiredBuyBtn').onclick = () => showExpiredModal();
+      return;
+    }
+
+    // trial → 남은 일수 표시
+    if (status.status === 'trial' && status.daysLeft != null) {
+      const badge = ce('div');
+      badge.id = 'qaTrialBadge';
+      const urgent = status.daysLeft <= 1;
+      badge.style.cssText = `padding:4px 10px;font-size:11px;text-align:center;color:${urgent ? '#ef4444' : '#94a3b8'};background:${urgent ? '#1c0a0a' : '#0f172a'};`;
+      badge.textContent = `체험 D-${status.daysLeft} \uD83D\uDD50`;
+      panelBody.parentNode.insertBefore(badge, panelBody);
+    }
   }
 
   /* ===== Overlay Visibility ===== */

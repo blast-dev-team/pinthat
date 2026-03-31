@@ -9,10 +9,8 @@
  *   PLANS — 유저별 Pro 플랜 저장
  */
 
-const ALLOWED_PRICES = {
-  'price_1TGyk6DYzHZgHbYuaa7l4brX': 'monthly',
-  'price_1TGynHDYzHZgHbYuoGARymvh': 'lifetime',
-};
+const LIFETIME_PRICE_ID = 'price_1TH19ZDYzHZgHbYu1LHP93Ty';
+const TRIAL_DAYS = 7;
 
 async function verifyStripeSignature(payload, sigHeader, secret) {
   try {
@@ -196,40 +194,62 @@ export default {
     if (url.pathname === '/check-plan' && request.method === 'GET') {
       const username = url.searchParams.get('username');
       if (!username) {
-        return Response.json({ plan: 'free' }, { headers: CORS_HEADERS });
+        return Response.json({ plan: 'none' }, { headers: CORS_HEADERS });
       }
       try {
-        const stored = await env.PLANS.get(username);
-        if (stored) {
-          return Response.json(JSON.parse(stored), { headers: CORS_HEADERS });
+        let data = await env.PLANS.get(username, 'json');
+
+        // 첫 로그인 → trial 자동 생성
+        if (!data) {
+          const now = new Date();
+          const expires = new Date(now.getTime() + TRIAL_DAYS * 24 * 60 * 60 * 1000);
+          data = {
+            plan: 'trial',
+            trialStartedAt: now.toISOString(),
+            trialExpiresAt: expires.toISOString(),
+          };
+          await env.PLANS.put(username, JSON.stringify(data));
         }
-        return Response.json({ plan: 'free' }, { headers: CORS_HEADERS });
+
+        // paid → 그대로 반환
+        if (data.plan === 'paid') {
+          return Response.json(data, { headers: CORS_HEADERS });
+        }
+
+        // trial → 만료 체크
+        if (data.plan === 'trial' && data.trialExpiresAt) {
+          const now = Date.now();
+          const expires = new Date(data.trialExpiresAt).getTime();
+          const msLeft = expires - now;
+          const daysLeft = Math.max(0, Math.ceil(msLeft / (24 * 60 * 60 * 1000)));
+
+          if (daysLeft <= 0) {
+            return Response.json({ ...data, plan: 'expired', daysLeft: 0 }, { headers: CORS_HEADERS });
+          }
+          return Response.json({ ...data, daysLeft }, { headers: CORS_HEADERS });
+        }
+
+        return Response.json(data, { headers: CORS_HEADERS });
       } catch (err) {
-        return Response.json({ plan: 'free' }, { headers: CORS_HEADERS });
+        console.error('[check-plan] Error:', err.message);
+        return Response.json({ plan: 'none' }, { headers: CORS_HEADERS });
       }
     }
 
     // ===== Route: POST /create-checkout =====
     if (url.pathname === '/create-checkout' && request.method === 'POST') {
       try {
-        const { username, priceId, successUrl, cancelUrl } = await request.json();
+        const { username, successUrl, cancelUrl } = await request.json();
 
-        if (!username || !priceId || !successUrl || !cancelUrl) {
+        if (!username || !successUrl || !cancelUrl) {
           return Response.json({ error: 'Missing required fields' }, { status: 400, headers: CORS_HEADERS });
         }
 
-        const priceType = ALLOWED_PRICES[priceId];
-        if (!priceType) {
-          return Response.json({ error: 'Invalid price ID' }, { status: 400, headers: CORS_HEADERS });
-        }
-
-        const mode = priceType === 'monthly' ? 'subscription' : 'payment';
-
         const params = new URLSearchParams();
-        params.append('mode', mode);
+        params.append('mode', 'payment');
         params.append('success_url', successUrl);
         params.append('cancel_url', cancelUrl);
-        params.append('line_items[0][price]', priceId);
+        params.append('line_items[0][price]', LIFETIME_PRICE_ID);
         params.append('line_items[0][quantity]', '1');
         params.append('metadata[github_username]', username);
 
@@ -276,18 +296,17 @@ export default {
           console.log('[webhook] Username:', username, 'Mode:', session.mode);
 
           if (username) {
-            const type = session.mode === 'subscription' ? 'monthly' : 'lifetime';
-
-            const planData = {
-              plan: 'pro',
-              type: type,
+            const existing = await env.PLANS.get(username, 'json') || {};
+            const updated = {
+              ...existing,
+              plan: 'paid',
+              type: 'lifetime',
               paidAt: new Date().toISOString(),
               stripeCustomerId: session.customer || null,
-              stripeSubscriptionId: session.subscription || null,
             };
 
-            await env.PLANS.put(username, JSON.stringify(planData));
-            console.log('[webhook] Plan saved for', username, ':', JSON.stringify(planData));
+            await env.PLANS.put(username, JSON.stringify(updated));
+            console.log('[webhook] Plan saved for', username, ':', JSON.stringify(updated));
           } else {
             console.error('[webhook] No github_username in metadata');
           }
