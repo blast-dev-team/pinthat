@@ -16,17 +16,27 @@ const ALLOWED_PRICES = {
 
 async function verifyStripeSignature(payload, sigHeader, secret) {
   try {
-    if (!sigHeader || !secret) return false;
+    if (!sigHeader || !secret) {
+      console.error('[sig] Missing sigHeader or secret');
+      return false;
+    }
 
-    const parts = {};
+    // Stripe-Signature: t=timestamp,v1=sig1,v1=sig2,...
+    let timestamp = null;
+    const signatures = [];
     sigHeader.split(',').forEach(part => {
       const idx = part.indexOf('=');
-      if (idx > 0) parts[part.substring(0, idx).trim()] = part.substring(idx + 1).trim();
+      if (idx <= 0) return;
+      const k = part.substring(0, idx).trim();
+      const v = part.substring(idx + 1).trim();
+      if (k === 't') timestamp = v;
+      if (k === 'v1') signatures.push(v);
     });
 
-    const timestamp = parts['t'];
-    const signature = parts['v1'];
-    if (!timestamp || !signature) return false;
+    if (!timestamp || signatures.length === 0) {
+      console.error('[sig] No timestamp or v1 found. Header:', sigHeader.substring(0, 80));
+      return false;
+    }
 
     const signedPayload = `${timestamp}.${payload}`;
     const key = await crypto.subtle.importKey(
@@ -36,12 +46,16 @@ async function verifyStripeSignature(payload, sigHeader, secret) {
       false,
       ['sign']
     );
-    const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(signedPayload));
-    const expectedSig = Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2, '0')).join('');
+    const sigBuf = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(signedPayload));
+    const expectedSig = Array.from(new Uint8Array(sigBuf)).map(b => b.toString(16).padStart(2, '0')).join('');
 
-    return expectedSig === signature;
+    console.log('[sig] Expected:', expectedSig.substring(0, 16) + '...');
+    console.log('[sig] Got v1[0]:', signatures[0].substring(0, 16) + '...');
+
+    // 하나라도 매치하면 통과
+    return signatures.some(s => s === expectedSig);
   } catch (err) {
-    console.error('[verifyStripeSignature] Error:', err.message);
+    console.error('[sig] Error:', err.message);
     return false;
   }
 }
