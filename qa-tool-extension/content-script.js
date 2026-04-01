@@ -2270,6 +2270,7 @@
           const mapping = settings.mappings.find(m => m.urlPattern === location.origin);
           if (mapping) {
             select.value = mapping.repoOwner + '/' + mapping.repoName;
+            selectedRepo = { owner: mapping.repoOwner, name: mapping.repoName };
             connectionVerified = true;
             setSaveBtnEnabled(true);
           }
