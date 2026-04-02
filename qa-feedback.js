@@ -9,8 +9,10 @@
   const STATE = {
     active: false,          // inspection mode on/off
     mode: 'element',        // element | text | area
-    feedbacks: [],          // { id, el, selector, section, tagName, classes, textContent, bbox, styles, feedback, selectedText, areaBox, fbType }
+    feedbacks: [],          // { id, el, selector, section, tagName, classes, textContent, bbox, styles, feedback, selectedText, areaBox, fbType, moveType, moveDirection, moveTarget }
     nextId: 1,
+    freeMoveMode: false,    // crosshair mode for free move
+    freeMoveSource: null,   // source element info during free move
     detailLevel: 'standard', // compact | standard | detailed | forensic
     animPaused: false,
     dragStart: null,         // area selection start {x,y}
@@ -195,9 +197,28 @@
       .qa-feedback-popup-header { cursor:move; }
 
       /* Feedback type tabs */
-      .qa-feedback-type-tabs { display:flex; gap:4px; padding:8px 16px 4px; }
+      .qa-feedback-type-tabs { display:flex; gap:4px; padding:8px 16px 4px; flex-wrap:wrap; }
       .qa-feedback-type-tab { padding:5px 12px; border-radius:6px; font-size:12px; border:1px solid #e2e8f0; background:#fff; cursor:pointer; color:#64748b; }
       .qa-feedback-type-tab.active { background:#1e293b; color:#fff; border-color:#1e293b; }
+
+      /* Move submenu */
+      .qa-feedback-move-submenu { padding:8px 16px 4px; display:flex; gap:6px; }
+      .qa-feedback-move-btn { padding:6px 12px; border-radius:6px; font-size:12px; border:1px solid #e2e8f0; background:#f8fafc; cursor:pointer; color:#475569; }
+      .qa-feedback-move-btn:hover { border-color:#3b82f6; color:#3b82f6; }
+      .qa-feedback-move-btn.active { background:#2563eb; color:#fff; border-color:#2563eb; }
+
+      /* Direction selector */
+      .qa-feedback-direction-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:4px; padding:8px 16px; max-width:180px; margin:0 auto; }
+      .qa-feedback-dir-btn { padding:8px; border-radius:6px; font-size:16px; border:1px solid #e2e8f0; background:#fff; cursor:pointer; text-align:center; }
+      .qa-feedback-dir-btn:hover { background:#eff6ff; border-color:#3b82f6; }
+      .qa-feedback-dir-btn.active { background:#2563eb; color:#fff; border-color:#2563eb; }
+      .qa-feedback-dir-btn.empty { visibility:hidden; }
+
+      /* Free move crosshair overlay */
+      .qa-feedback-crosshair-overlay { position:fixed; top:0; left:0; right:0; bottom:0; z-index:99995; cursor:crosshair; }
+      .qa-feedback-crosshair-guide { position:fixed; top:0; left:0; right:0; z-index:99996; background:#1e293b; color:#fff; text-align:center; padding:10px 16px; font-size:14px; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; }
+      .qa-feedback-crosshair-guide button { margin-left:12px; padding:4px 12px; border-radius:6px; border:1px solid #475569; background:#334155; color:#cbd5e1; cursor:pointer; font-size:12px; }
+      .qa-feedback-move-marker { position:absolute; z-index:99982; width:20px; height:20px; border-radius:50%; background:#ef4444; border:2px solid #fff; box-shadow:0 2px 8px rgba(0,0,0,0.3); transform:translate(-50%,-50%); pointer-events:none; }
 
       /* Output modal */
       .qa-feedback-output-overlay { position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.6); z-index:99999; display:flex; align-items:center; justify-content:center; }
@@ -408,7 +429,7 @@
 
   /* ===== Event Handlers ===== */
   function isQaElement(el) {
-    return el && (el.closest('.qa-feedback-panel') || el.closest('.qa-feedback-popup') || el.closest('.qa-feedback-review-popup') || el.closest('.qa-feedback-output-overlay') || el.closest('.qa-settings-overlay') || el.classList.contains('qa-feedback-hover-overlay') || el.classList.contains('qa-feedback-area-select') || el.classList.contains('qa-feedback-selected-overlay') || el.classList.contains('qa-feedback-number-badge') || el.classList.contains('qa-feedback-review-overlay') || el.classList.contains('qa-feedback-review-badge') || el.classList.contains('qa-feedback-toast'));
+    return el && (el.closest('.qa-feedback-panel') || el.closest('.qa-feedback-popup') || el.closest('.qa-feedback-review-popup') || el.closest('.qa-feedback-output-overlay') || el.closest('.qa-settings-overlay') || el.classList.contains('qa-feedback-hover-overlay') || el.classList.contains('qa-feedback-area-select') || el.classList.contains('qa-feedback-selected-overlay') || el.classList.contains('qa-feedback-number-badge') || el.classList.contains('qa-feedback-review-overlay') || el.classList.contains('qa-feedback-review-badge') || el.classList.contains('qa-feedback-toast') || el.classList.contains('qa-feedback-crosshair-overlay') || el.classList.contains('qa-feedback-crosshair-guide') || el.classList.contains('qa-feedback-move-marker') || el.dataset.qaElement === 'true');
   }
 
   function onMouseMove(e) {
@@ -567,7 +588,9 @@
         <button class="qa-feedback-type-tab active" data-type="UI">🎨 UI</button>
         <button class="qa-feedback-type-tab" data-type="기능">⚙️ 기능</button>
         <button class="qa-feedback-type-tab" data-type="텍스트">📝 텍스트</button>
+        <button class="qa-feedback-type-tab" data-type="위치이동">📍 위치이동</button>
       </div>
+      <div id="qaMoveSubmenu" style="display:none;"></div>
       <div class="qa-feedback-popup-body">
         <textarea placeholder="피드백을 입력하세요..." id="qaFeedbackInput" autofocus></textarea>
       </div>
@@ -581,22 +604,190 @@
     currentPopup = popup;
     makePopupDraggable(popup);
 
-    // Type tab switching
+    // Move-related state
     let selectedType = 'UI';
+    let moveType = null;        // 'component' | 'free'
+    let moveDirection = null;   // 'left' | 'right' | 'up' | 'down'
+    let moveTarget = null;      // { x, y, nearestSelector, description }
+
+    function showMoveSubmenu() {
+      const submenu = qs('#qaMoveSubmenu', popup);
+      submenu.style.display = 'block';
+      submenu.innerHTML = `
+        <div class="qa-feedback-move-submenu">
+          <button class="qa-feedback-move-btn" data-move="component">🧩 컴포넌트 이동</button>
+          <button class="qa-feedback-move-btn" data-move="free">📍 자유 위치 이동</button>
+        </div>
+      `;
+      submenu.querySelectorAll('.qa-feedback-move-btn').forEach(btn => {
+        btn.onclick = (e) => {
+          e.stopPropagation();
+          submenu.querySelectorAll('.qa-feedback-move-btn').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          moveType = btn.dataset.move;
+          if (moveType === 'component') showDirectionSelector();
+          else if (moveType === 'free') startFreeMoveMode();
+        };
+      });
+    }
+
+    function showDirectionSelector() {
+      const body = qs('.qa-feedback-popup-body', popup);
+      body.innerHTML = `
+        <div class="qa-feedback-direction-grid">
+          <div class="qa-feedback-dir-btn empty"></div>
+          <button class="qa-feedback-dir-btn" data-dir="up">⬆</button>
+          <div class="qa-feedback-dir-btn empty"></div>
+          <button class="qa-feedback-dir-btn" data-dir="left">⬅</button>
+          <div class="qa-feedback-dir-btn empty"></div>
+          <button class="qa-feedback-dir-btn" data-dir="right">➡</button>
+          <div class="qa-feedback-dir-btn empty"></div>
+          <button class="qa-feedback-dir-btn" data-dir="down">⬇</button>
+          <div class="qa-feedback-dir-btn empty"></div>
+        </div>
+        <textarea placeholder="메모 (선택사항): 네비게이션 왼쪽 끝으로..." id="qaFeedbackInput" style="margin-top:8px;"></textarea>
+      `;
+      body.querySelectorAll('.qa-feedback-dir-btn[data-dir]').forEach(btn => {
+        btn.onclick = (e) => {
+          e.stopPropagation();
+          body.querySelectorAll('.qa-feedback-dir-btn').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          moveDirection = btn.dataset.dir;
+        };
+      });
+      setTimeout(() => { const ta = qs('#qaFeedbackInput', popup); if (ta) ta.focus(); }, 100);
+    }
+
+    function startFreeMoveMode() {
+      // Hide popup, show crosshair overlay
+      popup.style.display = 'none';
+
+      const overlay = ce('div', 'qa-feedback-crosshair-overlay');
+      overlay.dataset.qaElement = 'true';
+      const guide = ce('div', 'qa-feedback-crosshair-guide');
+      guide.dataset.qaElement = 'true';
+      guide.innerHTML = '📍 이동할 위치를 클릭하세요 <button id="qaCrosshairCancel">취소</button>';
+
+      document.body.appendChild(overlay);
+      document.body.appendChild(guide);
+
+      qs('#qaCrosshairCancel').onclick = (e) => {
+        e.stopPropagation();
+        overlay.remove();
+        guide.remove();
+        popup.style.display = '';
+        // Reset to UI type
+        qs('#qaMoveSubmenu', popup).style.display = 'none';
+        selectedType = 'UI';
+        moveType = null;
+        qs('#qaTypeTabs', popup).querySelectorAll('.qa-feedback-type-tab').forEach(b => b.classList.remove('active'));
+        qs('#qaTypeTabs', popup).querySelector('[data-type="UI"]').classList.add('active');
+        const body = qs('.qa-feedback-popup-body', popup);
+        body.innerHTML = '<textarea placeholder="피드백을 입력하세요..." id="qaFeedbackInput" autofocus></textarea>';
+        setTimeout(() => { const ta = qs('#qaFeedbackInput', popup); if (ta) ta.focus(); }, 100);
+      };
+
+      overlay.onclick = (e) => {
+        const targetX = e.clientX;
+        const targetY = e.clientY;
+
+        // Remove overlay temporarily to get element underneath
+        overlay.style.pointerEvents = 'none';
+        overlay.style.display = 'none';
+        const nearestEl = document.elementFromPoint(targetX, targetY);
+        overlay.style.display = '';
+        overlay.style.pointerEvents = '';
+
+        let nearestSelector = null;
+        if (nearestEl && !isQaElement(nearestEl)) {
+          nearestSelector = getSelector(nearestEl);
+        }
+
+        moveTarget = {
+          x: Math.round(targetX + window.scrollX),
+          y: Math.round(targetY + window.scrollY),
+          nearestSelector: nearestSelector,
+          description: ''
+        };
+
+        // Add visual marker at target position
+        const marker = ce('div', 'qa-feedback-move-marker');
+        marker.style.left = (targetX + window.scrollX) + 'px';
+        marker.style.top = (targetY + window.scrollY) + 'px';
+        marker.dataset.qaElement = 'true';
+        document.body.appendChild(marker);
+
+        // Remove crosshair, show popup with memo input
+        overlay.remove();
+        guide.remove();
+        popup.style.display = '';
+
+        const body = qs('.qa-feedback-popup-body', popup);
+        const nearLabel = nearestSelector ? `<div style="font-size:11px;color:#64748b;margin-bottom:6px;">📍 목적지: (${targetX}, ${targetY}) — <code style="font-size:11px;">${nearestSelector}</code></div>` : `<div style="font-size:11px;color:#64748b;margin-bottom:6px;">📍 목적지: (${targetX}, ${targetY})</div>`;
+        body.innerHTML = nearLabel + '<textarea placeholder="메모: 이 버튼을 여기로 옮겨줘..." id="qaFeedbackInput"></textarea>';
+
+        setTimeout(() => { const ta = qs('#qaFeedbackInput', popup); if (ta) ta.focus(); }, 100);
+      };
+    }
+
+    function hideMoveSubmenu() {
+      const submenu = qs('#qaMoveSubmenu', popup);
+      submenu.style.display = 'none';
+      submenu.innerHTML = '';
+      moveType = null;
+      moveDirection = null;
+      moveTarget = null;
+      // Restore standard textarea
+      const body = qs('.qa-feedback-popup-body', popup);
+      body.innerHTML = '<textarea placeholder="피드백을 입력하세요..." id="qaFeedbackInput" autofocus></textarea>';
+      setTimeout(() => { const ta = qs('#qaFeedbackInput', popup); if (ta) ta.focus(); }, 100);
+    }
+
+    // Type tab switching
     qs('#qaTypeTabs', popup).querySelectorAll('.qa-feedback-type-tab').forEach(btn => {
       btn.onclick = () => {
         qs('#qaTypeTabs', popup).querySelectorAll('.qa-feedback-type-tab').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         selectedType = btn.dataset.type;
+        if (selectedType === '위치이동') showMoveSubmenu();
+        else hideMoveSubmenu();
       };
     });
 
     setTimeout(() => qs('#qaFeedbackInput').focus(), 50);
 
-    qs('#qaPopupCancel').onclick = () => { popup.remove(); currentPopup = null; };
+    qs('#qaPopupCancel').onclick = () => {
+      // Clean up any markers
+      document.querySelectorAll('.qa-feedback-move-marker').forEach(m => m.remove());
+      document.querySelectorAll('.qa-feedback-crosshair-overlay').forEach(o => o.remove());
+      document.querySelectorAll('.qa-feedback-crosshair-guide').forEach(g => g.remove());
+      popup.remove();
+      currentPopup = null;
+    };
     qs('#qaPopupSave').onclick = () => {
-      const fb = qs('#qaFeedbackInput').value.trim();
-      if (!fb) { qs('#qaFeedbackInput').style.borderColor = '#ef4444'; return; }
+      const textarea = qs('#qaFeedbackInput', popup);
+      let fb = textarea ? textarea.value.trim() : '';
+
+      // For 위치이동, auto-generate feedback text if memo is empty
+      if (selectedType === '위치이동') {
+        if (moveType === 'component') {
+          if (!moveDirection) { alert('방향을 선택하세요'); return; }
+          const dirLabel = { left:'왼쪽', right:'오른쪽', up:'위로', down:'아래로' }[moveDirection];
+          const autoText = `컴포넌트 이동: ${info ? info.selector : '(요소)'} → ${dirLabel}`;
+          fb = fb ? `${autoText}\n${fb}` : autoText;
+        } else if (moveType === 'free') {
+          if (!moveTarget) { alert('이동할 위치를 먼저 클릭하세요'); return; }
+          const autoText = `자유 위치 이동: ${info ? info.selector : '(요소)'} → (${moveTarget.x}, ${moveTarget.y})`;
+          fb = fb ? `${autoText}\n${fb}` : autoText;
+          moveTarget.description = textarea ? textarea.value.trim() : '';
+        } else {
+          alert('이동 유형을 선택하세요 (컴포넌트 이동 또는 자유 위치 이동)');
+          return;
+        }
+      } else {
+        if (!fb) { textarea.style.borderColor = '#ef4444'; return; }
+      }
+
       const entry = {
         id: STATE.nextId++,
         el: el,
@@ -611,6 +802,9 @@
         selectedText: selectedText || null,
         areaBox: areaRect || null,
         fbType: selectedType,
+        moveType: moveType || null,
+        moveDirection: moveDirection || null,
+        moveTarget: moveTarget || null,
       };
       STATE.feedbacks.push(entry);
       if (el) addOverlay(el, entry.id);
@@ -622,9 +816,12 @@
     };
 
     // Enter key to save
-    qs('#qaFeedbackInput').addEventListener('keydown', e => {
-      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) qs('#qaPopupSave').click();
-    });
+    const initTextarea = qs('#qaFeedbackInput', popup);
+    if (initTextarea) {
+      initTextarea.addEventListener('keydown', e => {
+        if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) qs('#qaPopupSave').click();
+      });
+    }
   }
 
   /* ===== Overlays & Badges ===== */
@@ -677,6 +874,10 @@
     popup.style.left = Math.min(rect.left, window.innerWidth - 360) + 'px';
 
     const curType = entry.fbType || 'UI';
+    const isMove = curType === '위치이동';
+    const moveInfo = isMove && entry.moveTarget ? `<div style="font-size:11px;color:#64748b;margin-bottom:6px;">📍 목적지: (${entry.moveTarget.x}, ${entry.moveTarget.y})${entry.moveTarget.nearestSelector ? ' — <code style="font-size:11px;">' + entry.moveTarget.nearestSelector + '</code>' : ''}</div>` : '';
+    const dirInfo = isMove && entry.moveDirection ? `<div style="font-size:11px;color:#64748b;margin-bottom:6px;">🧩 방향: ${{left:'⬅ 왼쪽',right:'➡ 오른쪽',up:'⬆ 위로',down:'⬇ 아래로'}[entry.moveDirection]}</div>` : '';
+
     popup.innerHTML = `
       <div class="qa-feedback-popup-header">
         <div class="qa-fb-sel">${entry.selector || '(영역 선택)'}</div>
@@ -686,8 +887,10 @@
         <button class="qa-feedback-type-tab${curType==='UI'?' active':''}" data-type="UI">🎨 UI</button>
         <button class="qa-feedback-type-tab${curType==='기능'?' active':''}" data-type="기능">⚙️ 기능</button>
         <button class="qa-feedback-type-tab${curType==='텍스트'?' active':''}" data-type="텍스트">📝 텍스트</button>
+        <button class="qa-feedback-type-tab${curType==='위치이동'?' active':''}" data-type="위치이동">📍 위치이동</button>
       </div>
       <div class="qa-feedback-popup-body">
+        ${moveInfo}${dirInfo}
         <textarea id="qaFeedbackInput">${entry.feedback}</textarea>
       </div>
       <div class="qa-feedback-popup-footer">
@@ -720,6 +923,8 @@
     qs('#qaPopupDelete').onclick = () => {
       STATE.feedbacks = STATE.feedbacks.filter(f => f.id !== id);
       document.querySelectorAll(`[data-qa-id="${id}"]`).forEach(e => e.remove());
+      // Clean up any move markers
+      document.querySelectorAll('.qa-feedback-move-marker').forEach(m => m.remove());
       updateCount();
       saveFeedbacks();
       popup.remove(); currentPopup = null;
@@ -747,6 +952,20 @@
       if (level !== 'compact') {
         if (fb.textContent) md += `- **현재 텍스트**: "${truncate(fb.textContent, 80)}"\n`;
         if (fb.selectedText) md += `- **선택 텍스트**: "${fb.selectedText}"\n`;
+      }
+
+      if (fb.fbType === '위치이동' && fb.moveType) {
+        const moveLabel = fb.moveType === 'component' ? '컴포넌트 이동' : '자유 위치 이동';
+        md += `- **이동 유형**: ${moveLabel}\n`;
+        if (fb.moveDirection) {
+          const dirLabel = { left:'⬅ 왼쪽', right:'➡ 오른쪽', up:'⬆ 위로', down:'⬇ 아래로' }[fb.moveDirection];
+          md += `- **방향**: ${dirLabel}\n`;
+        }
+        if (fb.moveTarget) {
+          md += `- **목적지 좌표**: (${fb.moveTarget.x}, ${fb.moveTarget.y})\n`;
+          if (fb.moveTarget.nearestSelector) md += `- **근처 요소**: \`${fb.moveTarget.nearestSelector}\`\n`;
+          if (fb.moveTarget.description) md += `- **메모**: ${fb.moveTarget.description}\n`;
+        }
       }
 
       md += `- **피드백**: ${fb.feedback}\n`;
@@ -846,7 +1065,7 @@
     STATE.nextId = 1;
     localStorage.removeItem(STORAGE_KEY);
     // Remove all overlays, badges, area markers
-    document.querySelectorAll('.qa-feedback-selected-overlay, .qa-feedback-number-badge, .qa-feedback-area-select').forEach(e => {
+    document.querySelectorAll('.qa-feedback-selected-overlay, .qa-feedback-number-badge, .qa-feedback-area-select, .qa-feedback-move-marker, .qa-feedback-crosshair-overlay, .qa-feedback-crosshair-guide').forEach(e => {
       if (e !== areaBox) e.remove();
     });
     // Remove any open popup
