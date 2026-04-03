@@ -119,7 +119,10 @@
 .qa-feedback-move-overlay { border-color:#7c3aed !important; background:rgba(124,58,237,0.08) !important; }
 .qa-feedback-move-badge { background:#7c3aed !important; }
 .qa-feedback-move-dest-overlay { border-color:#a78bfa !important; background:rgba(167,139,250,0.08) !important; border-style:dashed !important; }
-.qa-feedback-move-marker { position:absolute; z-index:99982; width:12px; height:12px; border-radius:50%; background:#ef4444; border:2px solid #fff; box-shadow:0 0 4px rgba(0,0,0,0.3); pointer-events:none; }
+/* 드래그 중 출발 요소 하이라이트 */
+.qa-feedback-drag-source { outline:2px dashed #f43f5e !important; outline-offset:2px; }
+/* 화살표 중간 번호 배지 */
+.qa-feedback-arrow-badge { position:absolute; transform:translate(-50%,-50%); pointer-events:auto; cursor:pointer; }
 
 /* Move sub-option buttons */
 .qa-feedback-move-sub-buttons { display:flex; flex-direction:column; gap:8px; }

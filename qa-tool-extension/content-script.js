@@ -278,7 +278,7 @@
 
   /* ===== Event Handlers ===== */
   function isQaElement(el) {
-    return el && (el.closest('.qa-feedback-panel') || el.closest('.qa-feedback-popup') || el.closest('.qa-feedback-review-popup') || el.closest('.qa-feedback-output-overlay') || el.closest('.qa-settings-overlay') || el.closest('.qa-feedback-move-guide') || el.classList.contains('qa-feedback-hover-overlay') || el.classList.contains('qa-feedback-selected-overlay') || el.classList.contains('qa-feedback-number-badge') || el.classList.contains('qa-feedback-review-overlay') || el.classList.contains('qa-feedback-review-badge') || el.classList.contains('qa-feedback-move-source-overlay') || el.classList.contains('qa-feedback-move-marker') || el.classList.contains('qa-feedback-toast'));
+    return el && (el.closest('.qa-feedback-panel') || el.closest('.qa-feedback-popup') || el.closest('.qa-feedback-review-popup') || el.closest('.qa-feedback-output-overlay') || el.closest('.qa-settings-overlay') || el.closest('.qa-feedback-move-guide') || el.classList.contains('qa-feedback-hover-overlay') || el.classList.contains('qa-feedback-selected-overlay') || el.classList.contains('qa-feedback-number-badge') || el.classList.contains('qa-feedback-review-overlay') || el.classList.contains('qa-feedback-review-badge') || el.classList.contains('qa-feedback-move-source-overlay') || el.classList.contains('qa-feedback-arrow-overlay') || el.classList.contains('qa-feedback-arrow-badge') || el.classList.contains('qa-feedback-toast'));
   }
 
   function onMouseMove(e) {
@@ -298,14 +298,12 @@
   function onClick(e) {
     if (!hoverOverlay) return;
     if (!STATE.active) return;
+    if (isQaElement(e.target)) return;
     if (STATE.moveMode) {
-      if (isQaElement(e.target)) return;
       e.preventDefault();
       e.stopPropagation();
-      handleFreeMoveDest(e);
       return;
     }
-    if (isQaElement(e.target)) return;
     if (STATE.mode === 'element') {
       e.preventDefault();
       e.stopPropagation();
@@ -660,67 +658,180 @@
     });
   }
 
-  /* --- B. 자유 위치 이동 (좌표 기반) --- */
+  /* --- B. 자유 위치 이동 (드래그 + 화살표) --- */
+  let dragArrowSvg = null;
+  let dragArrowLine = null;
+  let dragSourceCenter = null;
+
   function enterFreeMoveMode(sourceEl, sourceInfo) {
     STATE.moveMode = true;
     STATE.moveSource = { el: sourceEl, info: sourceInfo };
 
-    addMoveSourceOverlay(sourceEl);
-    document.body.style.cursor = 'crosshair';
+    sourceEl.classList.add('qa-feedback-drag-source');
+
+    const rect = sourceEl.getBoundingClientRect();
+    dragSourceCenter = {
+      x: rect.left + rect.width / 2,
+      y: rect.top + rect.height / 2
+    };
+
+    // SVG 화살표 오버레이
+    const ns = 'http://www.w3.org/2000/svg';
+    dragArrowSvg = document.createElementNS(ns, 'svg');
+    dragArrowSvg.classList.add('qa-feedback-arrow-svg');
+    dragArrowSvg.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;pointer-events:none;z-index:99995;';
+
+    const defs = document.createElementNS(ns, 'defs');
+    const marker = document.createElementNS(ns, 'marker');
+    marker.setAttribute('id', 'qa-arrow-head');
+    marker.setAttribute('markerWidth', '10');
+    marker.setAttribute('markerHeight', '7');
+    marker.setAttribute('refX', '9');
+    marker.setAttribute('refY', '3.5');
+    marker.setAttribute('orient', 'auto');
+    const polygon = document.createElementNS(ns, 'polygon');
+    polygon.setAttribute('points', '0 0, 10 3.5, 0 7');
+    polygon.setAttribute('fill', '#f43f5e');
+    marker.appendChild(polygon);
+    defs.appendChild(marker);
+    dragArrowSvg.appendChild(defs);
+
+    // 출발점 원
+    const circle = document.createElementNS(ns, 'circle');
+    circle.setAttribute('cx', dragSourceCenter.x);
+    circle.setAttribute('cy', dragSourceCenter.y);
+    circle.setAttribute('r', '4');
+    circle.setAttribute('fill', '#f43f5e');
+    circle.style.opacity = '0.7';
+    dragArrowSvg.appendChild(circle);
+
+    dragArrowLine = document.createElementNS(ns, 'line');
+    dragArrowLine.setAttribute('x1', dragSourceCenter.x);
+    dragArrowLine.setAttribute('y1', dragSourceCenter.y);
+    dragArrowLine.setAttribute('x2', dragSourceCenter.x);
+    dragArrowLine.setAttribute('y2', dragSourceCenter.y);
+    dragArrowLine.setAttribute('stroke', '#f43f5e');
+    dragArrowLine.setAttribute('stroke-width', '2');
+    dragArrowLine.setAttribute('marker-end', 'url(#qa-arrow-head)');
+    dragArrowLine.style.opacity = '0.7';
+    dragArrowSvg.appendChild(dragArrowLine);
+
+    document.body.appendChild(dragArrowSvg);
 
     moveGuide = ce('div', 'qa-feedback-move-guide');
     moveGuide.innerHTML = `
-      <span>\uD83D\uDCCD 목적지 위치를 클릭하세요 — 출발: <code>${truncate(sourceInfo.selector, 40)}</code> (${sourceInfo.tagName})</span>
+      <span>🎯 목적지로 드래그하세요 — 출발: <code>${truncate(sourceInfo.selector, 40)}</code></span>
       <button class="qa-feedback-move-guide-cancel">취소</button>
     `;
     document.body.appendChild(moveGuide);
-
     moveGuide.querySelector('.qa-feedback-move-guide-cancel').onclick = (e) => {
       e.stopPropagation();
       exitMoveMode();
     };
+
+    document.addEventListener('mousemove', onDragArrowMove);
+    // mouseup 리스너를 약간 지연 — 버튼 클릭의 mouseup이 바로 트리거되는 것 방지
+    setTimeout(() => document.addEventListener('mouseup', onDragArrowEnd), 100);
+  }
+
+  function onDragArrowMove(e) {
+    if (!dragArrowLine) return;
+    dragArrowLine.setAttribute('x2', e.clientX);
+    dragArrowLine.setAttribute('y2', e.clientY);
+  }
+
+  function onDragArrowEnd(e) {
+    document.removeEventListener('mousemove', onDragArrowMove);
+    document.removeEventListener('mouseup', onDragArrowEnd);
+
+    if (!STATE.moveSource) return;
+
+    const sourceInfo = STATE.moveSource.info;
+    const sourceEl = STATE.moveSource.el;
+    const destX = e.pageX;
+    const destY = e.pageY;
+    const nearestEl = document.elementFromPoint(e.clientX, e.clientY);
+    const nearestSelector = (nearestEl && !isQaElement(nearestEl)) ? getSelector(nearestEl) : '';
+
+    showFreeMoveMemoPopup(sourceEl, sourceInfo, destX, destY, nearestSelector);
   }
 
   function exitMoveMode() {
     STATE.moveMode = false;
     STATE.moveSource = null;
     if (moveGuide) { moveGuide.remove(); moveGuide = null; }
-    document.querySelectorAll('.qa-feedback-move-source-overlay, .qa-feedback-move-marker').forEach(e => e.remove());
+    if (dragArrowSvg) { dragArrowSvg.remove(); dragArrowSvg = null; }
+    dragArrowLine = null;
+    dragSourceCenter = null;
+    document.querySelectorAll('.qa-feedback-move-source-overlay').forEach(e => e.remove());
+    document.querySelectorAll('.qa-feedback-drag-source').forEach(e => e.classList.remove('qa-feedback-drag-source'));
+    document.removeEventListener('mousemove', onDragArrowMove);
+    document.removeEventListener('mouseup', onDragArrowEnd);
     document.body.style.cursor = STATE.active ? 'pointer' : '';
   }
 
-  function addMoveSourceOverlay(el) {
-    const rect = el.getBoundingClientRect();
-    const ov = ce('div', 'qa-feedback-move-source-overlay');
-    ov.style.left = (rect.left + window.scrollX) + 'px';
-    ov.style.top = (rect.top + window.scrollY) + 'px';
-    ov.style.width = rect.width + 'px';
-    ov.style.height = rect.height + 'px';
-    document.body.appendChild(ov);
-  }
+  /* 저장된 피드백에 화살표 SVG 오버레이 렌더링 */
+  function addArrowOverlay(sourceEl, destX, destY, id) {
+    const ns = 'http://www.w3.org/2000/svg';
+    const rect = sourceEl.getBoundingClientRect();
+    const srcX = rect.left + window.scrollX + rect.width / 2;
+    const srcY = rect.top + window.scrollY + rect.height / 2;
 
-  function handleFreeMoveDest(e) {
-    if (!STATE.moveSource) return;
-    const sourceInfo = STATE.moveSource.info;
-    const sourceEl = STATE.moveSource.el;
+    const svg = document.createElementNS(ns, 'svg');
+    svg.classList.add('qa-feedback-arrow-overlay');
+    svg.dataset.qaId = id;
 
-    const destX = e.pageX;
-    const destY = e.pageY;
-    const nearestEl = document.elementFromPoint(e.clientX, e.clientY);
-    const nearestSelector = (nearestEl && !isQaElement(nearestEl)) ? getSelector(nearestEl) : '';
+    // SVG 크기: 문서 전체 커버
+    const docW = Math.max(document.documentElement.scrollWidth, document.body.scrollWidth);
+    const docH = Math.max(document.documentElement.scrollHeight, document.body.scrollHeight);
+    svg.style.cssText = `position:absolute;top:0;left:0;width:${docW}px;height:${docH}px;pointer-events:none;z-index:99990;`;
 
-    // 목적지 마커 표시
-    addFreeMovMarker(destX, destY);
-    if (moveGuide) { moveGuide.remove(); moveGuide = null; }
+    const defs = document.createElementNS(ns, 'defs');
+    const marker = document.createElementNS(ns, 'marker');
+    marker.setAttribute('id', 'qa-arrow-head-' + id);
+    marker.setAttribute('markerWidth', '10');
+    marker.setAttribute('markerHeight', '7');
+    marker.setAttribute('refX', '9');
+    marker.setAttribute('refY', '3.5');
+    marker.setAttribute('orient', 'auto');
+    const polygon = document.createElementNS(ns, 'polygon');
+    polygon.setAttribute('points', '0 0, 10 3.5, 0 7');
+    polygon.setAttribute('fill', '#f43f5e');
+    marker.appendChild(polygon);
+    defs.appendChild(marker);
+    svg.appendChild(defs);
 
-    showFreeMoveMemoPopup(sourceEl, sourceInfo, destX, destY, nearestSelector);
-  }
+    // 출발점 원
+    const circle = document.createElementNS(ns, 'circle');
+    circle.setAttribute('cx', srcX);
+    circle.setAttribute('cy', srcY);
+    circle.setAttribute('r', '4');
+    circle.setAttribute('fill', '#f43f5e');
+    svg.appendChild(circle);
 
-  function addFreeMovMarker(x, y) {
-    const marker = ce('div', 'qa-feedback-move-marker');
-    marker.style.left = (x - 6) + 'px';
-    marker.style.top = (y - 6) + 'px';
-    document.body.appendChild(marker);
+    // 화살표 선
+    const line = document.createElementNS(ns, 'line');
+    line.setAttribute('x1', srcX);
+    line.setAttribute('y1', srcY);
+    line.setAttribute('x2', destX);
+    line.setAttribute('y2', destY);
+    line.setAttribute('stroke', '#f43f5e');
+    line.setAttribute('stroke-width', '2');
+    line.setAttribute('marker-end', `url(#qa-arrow-head-${id})`);
+    svg.appendChild(line);
+
+    // 화살표 중간에 번호 배지
+    const midX = (srcX + destX) / 2;
+    const midY = (srcY + destY) / 2;
+    const badge = ce('div', 'qa-feedback-number-badge qa-feedback-arrow-badge');
+    badge.textContent = id;
+    badge.style.left = midX + 'px';
+    badge.style.top = midY + 'px';
+    badge.dataset.qaId = id;
+    badge.onclick = (ev) => { ev.stopPropagation(); ev.preventDefault(); showEditPopup(id, badge); };
+
+    document.body.appendChild(svg);
+    document.body.appendChild(badge);
   }
 
   function showFreeMoveMemoPopup(sourceEl, sourceInfo, destX, destY, nearestSelector) {
@@ -823,13 +934,9 @@
     ov.appendChild(badge);
     document.body.appendChild(ov);
 
-    // 자유 이동: 목적지 좌표에 마커 표시
+    // 자유 이동: 화살표 SVG 오버레이
     if (fb && fb.moveType === 'free' && fb.moveTarget && fb.moveTarget.x != null) {
-      const marker = ce('div', 'qa-feedback-move-marker');
-      marker.style.left = (fb.moveTarget.x - 6) + 'px';
-      marker.style.top = (fb.moveTarget.y - 6) + 'px';
-      marker.dataset.qaId = id;
-      document.body.appendChild(marker);
+      addArrowOverlay(el, fb.moveTarget.x, fb.moveTarget.y, id);
     }
   }
 
@@ -1200,7 +1307,7 @@
     STATE.feedbacks = [];
     STATE.nextId = 1;
     await chrome.storage.local.remove(getStorageKey());
-    document.querySelectorAll('.qa-feedback-selected-overlay, .qa-feedback-number-badge, .qa-feedback-move-marker').forEach(e => e.remove());
+    document.querySelectorAll('.qa-feedback-selected-overlay, .qa-feedback-number-badge, .qa-feedback-arrow-overlay, .qa-feedback-arrow-badge').forEach(e => e.remove());
     if (currentPopup) { currentPopup.remove(); currentPopup = null; }
     document.querySelectorAll('.qa-feedback-output-overlay').forEach(e => e.remove());
     hoverOverlay.style.display = 'none';
