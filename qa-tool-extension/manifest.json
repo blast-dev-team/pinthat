@@ -7,7 +7,7 @@
   "host_permissions": ["https://api.github.com/*", "https://pinthat-auth.el-lee.workers.dev/*"],
   "content_scripts": [
     {
-      "matches": ["http://*/*", "https://*/*"],
+      "matches": ["http://*/*", "https://*/*", "file:///*"],
       "js": ["content-script.js"],
       "css": ["styles.css"],
       "run_at": "document_idle"
