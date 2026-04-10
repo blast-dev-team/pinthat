@@ -160,6 +160,17 @@
 .qa-gh-send-item { display:flex; align-items:center; gap:6px; font-size:12px; color:#e2e8f0; padding:4px 0; cursor:pointer; }
 .qa-gh-send-item input[type="checkbox"] { accent-color:#3b82f6; flex-shrink:0; }
 
+/* ===== Drag handle bar ===== */
+.qa-feedback-drag-handle {
+  height:20px; cursor:grab; display:flex; align-items:center; justify-content:center;
+  border-radius:12px 12px 0 0;
+}
+.qa-feedback-drag-handle::after {
+  content:''; display:block; width:32px; height:3px;
+  background:#d1d5db; border-radius:2px;
+}
+.qa-feedback-drag-handle:active { cursor:grabbing; }
+
 /* ===== Inspect Panel ===== */
 .qa-feedback-inspect { margin:8px 0; }
 .qa-feedback-inspect-toggle {

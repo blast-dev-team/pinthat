@@ -444,7 +444,7 @@
 
   /* ===== Popup Drag Helper ===== */
   function makePopupDraggable(popup) {
-    const header = popup.querySelector('.qa-feedback-popup-header') || popup.querySelector('.qa-feedback-review-popup-header');
+    const header = popup.querySelector('.qa-feedback-popup-header') || popup.querySelector('.qa-feedback-review-popup-header') || popup.querySelector('.qa-feedback-drag-handle');
     if (!header) return;
     let dragging = false, offX = 0, offY = 0;
     const onMove = (e) => {
@@ -511,6 +511,7 @@
     const fontShort = (s.fontFamily || '').split(',')[0].replace(/['"]/g, '').trim();
 
     popup.innerHTML = `
+      <div class="qa-feedback-drag-handle"></div>
       <div class="qa-feedback-inspect">
         <button class="qa-feedback-inspect-toggle" id="qaInspectToggle">
           📐 디자인 정보 <span class="qa-inspect-arrow">▲</span>
