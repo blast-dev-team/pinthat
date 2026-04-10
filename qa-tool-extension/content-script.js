@@ -687,15 +687,6 @@
     };
 
 
-    popup.querySelectorAll('.qa-inspect-value').forEach(el => {
-      el.style.cursor = 'pointer';
-      el.title = '클릭하여 복사';
-      el.onclick = (e) => {
-        e.stopPropagation();
-        navigator.clipboard.writeText(el.textContent.trim()).catch(() => {});
-        showToast(t('toastCopied'));
-      };
-    });
 
     popup.querySelectorAll('.qa-feedback-type-btn').forEach(btn => {
       btn.onclick = () => {
