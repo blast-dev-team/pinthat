@@ -1,9 +1,88 @@
 (function() {
   'use strict';
 
+  /* ===== i18n ===== */
+  const STRINGS = {
+    ko: {
+      btnFeedback: '피드백', btnSession: '세션', btnGithub: 'GitHub 설정',
+      btnShortcut: '단축키 설정', btnTrialBadge: '체험 D-{n}',
+      cancel: '취소', save: '저장', close: '닫기', confirm: '확인',
+      restore: '기본값 복원', delete: '삭제', load: '불러오기', review: '재검수',
+      githubSettingsTitle: 'GitHub 설정', githubTokenLabel: 'GitHub 토큰',
+      githubRepoLabel: '연결할 레포지토리',
+      githubSaved: 'GitHub 설정이 저장되었습니다.',
+      githubRequired: 'GitHub 설정이 필요합니다.',
+      githubRequired2: 'GitHub 설정이 필요합니다. 🔗 GitHub 설정에서 연결하세요.',
+      githubTokenExpired: '❌ 토큰이 만료되었습니다. GitHub 설정에서 토큰을 재설정하세요.',
+      githubRepoNotFound: '❌ 레포를 찾을 수 없습니다. GitHub 설정을 확인하세요.',
+      shortcutSettingsTitle: '단축키 설정',
+      sessionNameTitle: '세션 저장', sessionListTitle: '저장된 세션',
+      sessionEmpty: '저장된 세션이 없습니다.',
+      issueSendTitle: 'GitHub Issue 전송', issueSendConfirm: '전송',
+      languageLabel: '언어 (Language)', languageKo: '한국어', languageEn: 'English',
+      loginTitle: 'GitHub으로 로그인',
+      loginDesc: 'PinThat을 시작하려면\nGitHub 로그인이 필요합니다.',
+      loginBtn: 'GitHub로 로그인',
+      trialExpiredTitle: '체험 기간이 만료되었습니다',
+      trialExpiredDesc: 'PinThat을 계속 사용하려면\n평생이용권을 구매해주세요.',
+      buyBtn: '구매하기',
+      toastCopied: '리포트가 클립보드에 복사되었습니다.',
+      toastImported: '건의 피드백을 가져왔습니다.',
+      toastNoFeedback: '피드백이 없습니다.',
+      toastLoginRequired: 'GitHub 로그인 후 이용할 수 있습니다.',
+      toastExpired: '체험이 만료되었습니다. 구매 후 이용해주세요.',
+    },
+    en: {
+      btnFeedback: 'Feedback', btnSession: 'Session', btnGithub: 'GitHub Settings',
+      btnShortcut: 'Shortcuts', btnTrialBadge: 'Trial D-{n}',
+      cancel: 'Cancel', save: 'Save', close: 'Close', confirm: 'Confirm',
+      restore: 'Restore Defaults', delete: 'Delete', load: 'Load', review: 'Re-review',
+      githubSettingsTitle: 'GitHub Settings', githubTokenLabel: 'GitHub Token',
+      githubRepoLabel: 'Repository',
+      githubSaved: 'GitHub settings saved.',
+      githubRequired: 'GitHub settings required.',
+      githubRequired2: 'GitHub settings required. 🔗 Please connect in GitHub Settings.',
+      githubTokenExpired: '❌ Token expired. Please reset your token in GitHub Settings.',
+      githubRepoNotFound: '❌ Repository not found. Check your GitHub settings.',
+      shortcutSettingsTitle: 'Shortcut Settings',
+      sessionNameTitle: 'Save Session', sessionListTitle: 'Saved Sessions',
+      sessionEmpty: 'No saved sessions.',
+      issueSendTitle: 'Send GitHub Issue', issueSendConfirm: 'Send',
+      languageLabel: 'Language (언어)', languageKo: '한국어', languageEn: 'English',
+      loginTitle: 'Sign in with GitHub',
+      loginDesc: 'GitHub login is required\nto use PinThat.',
+      loginBtn: 'Sign in with GitHub',
+      trialExpiredTitle: 'Trial Expired',
+      trialExpiredDesc: 'Purchase a Lifetime License\nto continue using PinThat.',
+      buyBtn: 'Buy Now',
+      toastCopied: 'Report copied to clipboard.',
+      toastImported: 'feedback items imported.',
+      toastNoFeedback: 'No feedback items.',
+      toastLoginRequired: 'GitHub login required.',
+      toastExpired: 'Trial expired. Please purchase to continue.',
+    }
+  };
+
+  function detectLang() {
+    const saved = localStorage.getItem('pinthat_lang');
+    if (saved === 'ko' || saved === 'en') return saved;
+    const browser = (navigator.language || 'en').toLowerCase();
+    return browser.startsWith('ko') ? 'ko' : 'en';
+  }
+
+  let currentLang = detectLang();
+
+  function t(key, vars = {}) {
+    let str = STRINGS[currentLang]?.[key] || STRINGS['en'][key] || key;
+    Object.entries(vars).forEach(([k, v]) => { str = str.replace(`{${k}}`, v); });
+    return str;
+  }
+
   /* ===== State ===== */
   const STATE = {
     active: false,
+    isLoggedIn: false,
+    isExpired: false,
     mode: 'element',
     feedbacks: [],
     nextId: 1,
@@ -129,13 +208,34 @@
       color: cs.color, fontSize: cs.fontSize, fontWeight: cs.fontWeight,
       backgroundColor: cs.backgroundColor, padding: cs.padding, margin: cs.margin,
       display: cs.display, position: cs.position, border: cs.border,
-      lineHeight: cs.lineHeight, textAlign: cs.textAlign
+      lineHeight: cs.lineHeight, textAlign: cs.textAlign,
+      fontFamily: cs.fontFamily,
+      borderRadius: cs.borderRadius,
+      opacity: cs.opacity,
+      gap: cs.gap,
+      flexDirection: cs.flexDirection,
+      justifyContent: cs.justifyContent,
+      alignItems: cs.alignItems,
+      overflow: cs.overflow,
+      boxShadow: cs.boxShadow,
+      marginTop: cs.marginTop, marginRight: cs.marginRight,
+      marginBottom: cs.marginBottom, marginLeft: cs.marginLeft,
+      paddingTop: cs.paddingTop, paddingRight: cs.paddingRight,
+      paddingBottom: cs.paddingBottom, paddingLeft: cs.paddingLeft,
     };
+  }
+
+  function rgbToHex(rgb) {
+    if (!rgb || rgb === 'transparent' || rgb === 'rgba(0, 0, 0, 0)') return 'transparent';
+    const match = rgb.match(/\d+/g);
+    if (!match || match.length < 3) return rgb;
+    const hex = '#' + match.slice(0, 3).map(n => parseInt(n).toString(16).padStart(2, '0')).join('');
+    return hex.toUpperCase();
   }
 
   function captureElement(el) {
     const rect = el.getBoundingClientRect();
-    return {
+    const info = {
       selector: getSelector(el),
       section: getSection(el),
       tagName: el.tagName,
@@ -145,6 +245,19 @@
       bbox: { x: Math.round(rect.x), y: Math.round(rect.y), w: Math.round(rect.width), h: Math.round(rect.height) },
       styles: getComputedProps(el)
     };
+    if (el.tagName === 'IMG') {
+      info.imgInfo = {
+        src: el.src ? el.src.split('/').pop() : '',
+        naturalWidth: el.naturalWidth,
+        naturalHeight: el.naturalHeight,
+        alt: el.alt || '',
+      };
+    }
+    const bgImage = getComputedStyle(el).backgroundImage;
+    if (bgImage && bgImage !== 'none') {
+      info.bgImage = bgImage.replace(/url\(["']?/, '').replace(/["']?\)/, '').split('/').pop();
+    }
+    return info;
   }
 
   /* ===== Panel UI ===== */
@@ -157,7 +270,7 @@
     panel.innerHTML = `
       <div class="qa-feedback-panel-inner">
         <div class="qa-feedback-panel-header" id="qaPanelHeader">
-          <span>QA 검수 도구</span>
+          <span>PinThat</span>
           <button class="qa-feedback-collapse-btn" id="qaCollapseBtn">\u2212</button>
         </div>
         <div class="qa-feedback-panel-body" id="qaPanelBody">
@@ -179,20 +292,20 @@
           </button>
           <div class="qa-feedback-sep"></div>
           <button class="qa-feedback-btn" id="qaGitHubSettings">
-            <span class="qa-fb-icon">\uD83D\uDD17</span> GitHub 설정
+            <span class="qa-fb-icon">\uD83D\uDD17</span> ${t('btnGithub')}
           </button>
           <button class="qa-feedback-btn" id="qaGhIssueList" style="display:none;">
             <span class="qa-fb-icon">\uD83D\uDCCB</span> 이슈 현황
           </button>
           <div class="qa-feedback-sep"></div>
           <button class="qa-feedback-btn" id="qaSessionSave">
-            <span class="qa-fb-icon">\uD83D\uDCBE</span> 세션 저장
+            <span class="qa-fb-icon">\uD83D\uDCBE</span> ${t('btnSession')} ${t('save')}
           </button>
           <button class="qa-feedback-btn" id="qaSessionLoad">
-            <span class="qa-fb-icon">\uD83D\uDCC2</span> 세션 불러오기
+            <span class="qa-fb-icon">\uD83D\uDCC2</span> ${t('btnSession')} ${t('load')}
           </button>
           <button class="qa-feedback-btn" id="qaSettingsToggle">
-            <span class="qa-fb-icon">\u2699\uFE0F</span> 단축키 설정
+            <span class="qa-fb-icon">\u2699\uFE0F</span> ${t('btnShortcut')}
           </button>
         </div>
       </div>
@@ -229,6 +342,14 @@
   }
 
   function toggleActive() {
+    if (!STATE.isLoggedIn) {
+      showToast(t('toastLoginRequired'));
+      return;
+    }
+    if (STATE.isExpired) {
+      showToast(t('toastExpired'));
+      return;
+    }
     STATE.active = !STATE.active;
     const btn = qs('#qaToggleMode');
     btn.classList.toggle('active', STATE.active);
@@ -381,10 +502,163 @@
     popup.style.top = posY + 'px';
     popup.style.left = posX + 'px';
 
+    const s = info.styles;
+    const isFlexGrid = s.display === 'flex' || s.display === 'grid' || s.display === 'inline-flex' || s.display === 'inline-grid';
+    const hasText = !!info.textContent;
+    const isImg = info.tagName === 'IMG';
+    const fgHex = rgbToHex(s.color);
+    const bgHex = rgbToHex(s.backgroundColor);
+    const fontShort = (s.fontFamily || '').split(',')[0].replace(/['"]/g, '').trim();
+
     popup.innerHTML = `
       <div class="qa-feedback-popup-header">
         <div class="qa-fb-sel">${info.selector}</div>
         <div class="qa-fb-loc">${info.section}</div>
+      </div>
+      <div class="qa-feedback-inspect">
+        <button class="qa-feedback-inspect-toggle" id="qaInspectToggle">
+          📐 디자인 정보 <span class="qa-inspect-arrow">▼</span>
+        </button>
+        <div class="qa-feedback-inspect-body" id="qaInspectBody" style="display:none;">
+
+          <div class="qa-inspect-section">
+            <div class="qa-inspect-title">📏 크기</div>
+            <div class="qa-inspect-grid">
+              <span class="qa-inspect-label">W</span>
+              <span class="qa-inspect-value">${info.bbox.w}px</span>
+              <span class="qa-inspect-label">H</span>
+              <span class="qa-inspect-value">${info.bbox.h}px</span>
+            </div>
+          </div>
+
+          <div class="qa-inspect-section">
+            <div class="qa-inspect-title">📦 여백</div>
+            <div class="qa-inspect-box-model">
+              <div class="qa-inspect-margin-box">
+                <div class="qa-inspect-margin-label">margin</div>
+                <div class="qa-inspect-margin-values">
+                  <span class="top">${s.marginTop}</span>
+                  <div class="qa-inspect-padding-box">
+                    <div class="qa-inspect-padding-label">padding</div>
+                    <div class="qa-inspect-padding-values-row">
+                      <span>${s.paddingTop}</span>
+                    </div>
+                    <div class="qa-inspect-padding-row-mid">
+                      <span>${s.paddingLeft}</span>
+                      <div class="qa-inspect-content-box">${info.bbox.w} × ${info.bbox.h}</div>
+                      <span>${s.paddingRight}</span>
+                    </div>
+                    <div class="qa-inspect-padding-values-row">
+                      <span>${s.paddingBottom}</span>
+                    </div>
+                  </div>
+                  <div class="qa-inspect-margin-row-mid">
+                    <span>${s.marginLeft}</span>
+                    <span>${s.marginRight}</span>
+                  </div>
+                  <span class="bottom">${s.marginBottom}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="qa-inspect-section" ${!hasText ? 'style="display:none"' : ''}>
+            <div class="qa-inspect-title">🔤 타이포그래피</div>
+            <div class="qa-inspect-rows">
+              <div class="qa-inspect-row">
+                <span class="qa-inspect-label">Font</span>
+                <span class="qa-inspect-value">${fontShort}</span>
+              </div>
+              <div class="qa-inspect-row">
+                <span class="qa-inspect-label">Size</span>
+                <span class="qa-inspect-value">${s.fontSize}</span>
+              </div>
+              <div class="qa-inspect-row">
+                <span class="qa-inspect-label">Weight</span>
+                <span class="qa-inspect-value">${s.fontWeight}</span>
+              </div>
+              <div class="qa-inspect-row">
+                <span class="qa-inspect-label">Line-H</span>
+                <span class="qa-inspect-value">${s.lineHeight}</span>
+              </div>
+              <div class="qa-inspect-row">
+                <span class="qa-inspect-label">Color</span>
+                <span class="qa-inspect-value"><span class="qa-inspect-color-swatch" style="background:${s.color}"></span>${fgHex}</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="qa-inspect-section">
+            <div class="qa-inspect-title">🎨 스타일</div>
+            <div class="qa-inspect-rows">
+              <div class="qa-inspect-row">
+                <span class="qa-inspect-label">Background</span>
+                <span class="qa-inspect-value"><span class="qa-inspect-color-swatch" style="background:${s.backgroundColor}"></span>${bgHex}</span>
+              </div>
+              <div class="qa-inspect-row" ${!s.borderRadius || s.borderRadius === '0px' ? 'style="display:none"' : ''}>
+                <span class="qa-inspect-label">Radius</span>
+                <span class="qa-inspect-value">${s.borderRadius}</span>
+              </div>
+              <div class="qa-inspect-row" ${!s.border || s.border.startsWith('0px') ? 'style="display:none"' : ''}>
+                <span class="qa-inspect-label">Border</span>
+                <span class="qa-inspect-value">${s.border}</span>
+              </div>
+              <div class="qa-inspect-row" ${!s.boxShadow || s.boxShadow === 'none' ? 'style="display:none"' : ''}>
+                <span class="qa-inspect-label">Shadow</span>
+                <span class="qa-inspect-value">${s.boxShadow}</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="qa-inspect-section" ${!isFlexGrid ? 'style="display:none"' : ''}>
+            <div class="qa-inspect-title">📐 레이아웃</div>
+            <div class="qa-inspect-rows">
+              <div class="qa-inspect-row">
+                <span class="qa-inspect-label">Display</span>
+                <span class="qa-inspect-value">${s.display}</span>
+              </div>
+              <div class="qa-inspect-row">
+                <span class="qa-inspect-label">Direction</span>
+                <span class="qa-inspect-value">${s.flexDirection}</span>
+              </div>
+              <div class="qa-inspect-row" ${!s.gap || s.gap === 'normal' || s.gap === '0px' ? 'style="display:none"' : ''}>
+                <span class="qa-inspect-label">Gap</span>
+                <span class="qa-inspect-value">${s.gap}</span>
+              </div>
+              <div class="qa-inspect-row">
+                <span class="qa-inspect-label">Justify</span>
+                <span class="qa-inspect-value">${s.justifyContent}</span>
+              </div>
+              <div class="qa-inspect-row">
+                <span class="qa-inspect-label">Align</span>
+                <span class="qa-inspect-value">${s.alignItems}</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="qa-inspect-section" ${!isImg ? 'style="display:none"' : ''}>
+            <div class="qa-inspect-title">🖼️ 이미지</div>
+            <div class="qa-inspect-rows">
+              <div class="qa-inspect-row">
+                <span class="qa-inspect-label">File</span>
+                <span class="qa-inspect-value">${info.imgInfo ? info.imgInfo.src : ''}</span>
+              </div>
+              <div class="qa-inspect-row">
+                <span class="qa-inspect-label">Original</span>
+                <span class="qa-inspect-value">${info.imgInfo ? info.imgInfo.naturalWidth + ' × ' + info.imgInfo.naturalHeight + 'px' : ''}</span>
+              </div>
+              <div class="qa-inspect-row">
+                <span class="qa-inspect-label">Rendered</span>
+                <span class="qa-inspect-value">${info.bbox.w} × ${info.bbox.h}px</span>
+              </div>
+              <div class="qa-inspect-row">
+                <span class="qa-inspect-label">Alt</span>
+                <span class="qa-inspect-value">${info.imgInfo ? escapeHtml(info.imgInfo.alt) : ''}</span>
+              </div>
+            </div>
+          </div>
+
+        </div>
       </div>
       <div class="qa-feedback-type-select">
         <div style="font-size:12px;color:#94a3b8;margin-bottom:8px;">피드백 유형 선택</div>
@@ -396,13 +670,35 @@
         </div>
       </div>
       <div class="qa-feedback-popup-footer">
-        <button class="qa-fb-cancel" id="qaPopupCancel">취소</button>
+        <button class="qa-fb-cancel" id="qaPopupCancel">${t('cancel')}</button>
       </div>
     `;
 
     document.body.appendChild(popup);
     currentPopup = popup;
     makePopupDraggable(popup);
+
+    qs('#qaInspectToggle', popup).onclick = () => {
+      const body = qs('#qaInspectBody', popup);
+      const arrow = qs('.qa-inspect-arrow', popup);
+      if (body.style.display === 'none') {
+        body.style.display = '';
+        arrow.textContent = '▲';
+      } else {
+        body.style.display = 'none';
+        arrow.textContent = '▼';
+      }
+    };
+
+    popup.querySelectorAll('.qa-inspect-value').forEach(el => {
+      el.style.cursor = 'pointer';
+      el.title = '클릭하여 복사';
+      el.onclick = (e) => {
+        e.stopPropagation();
+        navigator.clipboard.writeText(el.textContent.trim()).catch(() => {});
+        showToast(t('toastCopied'));
+      };
+    });
 
     popup.querySelectorAll('.qa-feedback-type-btn').forEach(btn => {
       btn.onclick = () => {
@@ -447,8 +743,8 @@
         <textarea placeholder="피드백을 입력하세요..." id="qaFeedbackInput" autofocus></textarea>
       </div>
       <div class="qa-feedback-popup-footer">
-        <button class="qa-fb-cancel" id="qaPopupCancel">취소</button>
-        <button class="qa-fb-save" id="qaPopupSave">저장</button>
+        <button class="qa-fb-cancel" id="qaPopupCancel">${t('cancel')}</button>
+        <button class="qa-fb-save" id="qaPopupSave">${t('save')}</button>
       </div>
     `;
 
@@ -518,7 +814,7 @@
         </div>
       </div>
       <div class="qa-feedback-popup-footer">
-        <button class="qa-fb-cancel" id="qaPopupCancel">취소</button>
+        <button class="qa-fb-cancel" id="qaPopupCancel">${t('cancel')}</button>
       </div>
     `;
 
@@ -569,7 +865,7 @@
         </div>
       </div>
       <div class="qa-feedback-popup-footer">
-        <button class="qa-fb-cancel" id="qaPopupCancel">취소</button>
+        <button class="qa-fb-cancel" id="qaPopupCancel">${t('cancel')}</button>
       </div>
     `;
 
@@ -613,8 +909,8 @@
         <textarea placeholder="추가 메모 (선택사항)..." id="qaMoveMemo" autofocus></textarea>
       </div>
       <div class="qa-feedback-popup-footer">
-        <button class="qa-fb-cancel" id="qaMoveMemoCancel">취소</button>
-        <button class="qa-fb-save" id="qaMoveMemoSave">저장</button>
+        <button class="qa-fb-cancel" id="qaMoveMemoCancel">${t('cancel')}</button>
+        <button class="qa-fb-save" id="qaMoveMemoSave">${t('save')}</button>
       </div>
     `;
 
@@ -859,8 +1155,8 @@
         <textarea placeholder="예: 사이드바 아래로 옮겨주세요" id="qaMoveMemo" autofocus></textarea>
       </div>
       <div class="qa-feedback-popup-footer">
-        <button class="qa-fb-cancel" id="qaMoveMemoCancel">취소</button>
-        <button class="qa-fb-save" id="qaMoveMemoSave">저장</button>
+        <button class="qa-fb-cancel" id="qaMoveMemoCancel">${t('cancel')}</button>
+        <button class="qa-fb-save" id="qaMoveMemoSave">${t('save')}</button>
       </div>
     `;
 
@@ -982,9 +1278,9 @@
         <textarea id="qaFeedbackInput">${entry.feedback}</textarea>
       </div>
       <div class="qa-feedback-popup-footer">
-        <button class="qa-fb-delete" id="qaPopupDelete">삭제</button>
-        <button class="qa-fb-cancel" id="qaPopupCancel">취소</button>
-        <button class="qa-fb-save" id="qaPopupSave">저장</button>
+        <button class="qa-fb-delete" id="qaPopupDelete">${t('delete')}</button>
+        <button class="qa-fb-cancel" id="qaPopupCancel">${t('cancel')}</button>
+        <button class="qa-fb-save" id="qaPopupSave">${t('save')}</button>
       </div>
     `;
     document.body.appendChild(popup);
@@ -1148,7 +1444,7 @@
     sendOverlay.innerHTML = `
       <div class="qa-settings-modal" style="width:440px;max-height:80vh;display:flex;flex-direction:column;">
         <div class="qa-settings-modal-header">
-          <h3>\uD83D\uDE80 GitHub Issue 전송</h3>
+          <h3>🚀 ${t('issueSendTitle')}</h3>
         </div>
         <div class="qa-settings-modal-body" style="overflow-y:auto;flex:1;">
           <div class="qa-gh-field">
@@ -1171,8 +1467,8 @@
           </div>
         </div>
         <div class="qa-settings-modal-footer">
-          <button class="qa-settings-btn-close" id="qaIssueSendCancel">취소</button>
-          <button class="qa-settings-btn-save" id="qaIssueSendConfirm">전송</button>
+          <button class="qa-settings-btn-close" id="qaIssueSendCancel">${t('cancel')}</button>
+          <button class="qa-settings-btn-save" id="qaIssueSendConfirm">${t('issueSendConfirm')}</button>
         </div>
       </div>
     `;
@@ -1279,7 +1575,7 @@
   /* 제목 지정 가능한 Issue 생성 */
   async function createGitHubIssueWithTitle(title, markdown, feedbackCount) {
     const mapping = await getGitHubMapping();
-    if (!mapping) { showToast('GitHub 설정이 필요합니다.'); return null; }
+    if (!mapping) { showToast(t('githubRequired')); return null; }
 
     const { repoOwner, repoName, token } = mapping;
     await ensureLabelExists(repoOwner, repoName, token);
@@ -1293,9 +1589,9 @@
       if (res.ok) {
         const data = await res.json();
         return { number: data.number, url: data.html_url };
-      } else if (res.status === 401) { showToast('❌ 토큰이 만료되었습니다.'); }
+      } else if (res.status === 401) { showToast(t('githubTokenExpired')); }
       else if (res.status === 403) { showToast('❌ 권한이 없습니다.'); }
-      else if (res.status === 404) { showToast('❌ 레포를 찾을 수 없습니다.'); }
+      else if (res.status === 404) { showToast(t('githubRepoNotFound')); }
       else { showToast(`❌ Issue 생성 실패 (${res.status})`); }
       return null;
     } catch(err) { showToast('❌ 네트워크 오류'); return null; }
@@ -1332,15 +1628,15 @@
     overlay.innerHTML = `
       <div class="qa-settings-modal" style="width:340px;">
         <div class="qa-settings-modal-header">
-          <h3>\uD83D\uDCBE \uC138\uC158 \uC800\uC7A5</h3>
+          <h3>💾 ${t('sessionNameTitle')}</h3>
         </div>
         <div class="qa-settings-modal-body">
           <div style="margin-bottom:12px;font-size:13px;color:#94a3b8;">\uD53C\uB4DC\uBC31 ${STATE.feedbacks.length}\uAC74\uC744 \uC138\uC158\uC73C\uB85C \uC800\uC7A5\uD569\uB2C8\uB2E4.</div>
           <input type="text" id="qaSessionNameInput" value="${defaultName}" style="width:100%;padding:10px;border:1px solid #475569;border-radius:8px;background:#0f172a;color:#e2e8f0;font-size:13px;outline:none;" />
         </div>
         <div class="qa-settings-modal-footer">
-          <button class="qa-settings-btn-close" id="qaSessionNameCancel">\uCDE8\uC18C</button>
-          <button class="qa-settings-btn-save" id="qaSessionNameSave">\uC800\uC7A5</button>
+          <button class="qa-settings-btn-close" id="qaSessionNameCancel">${t('cancel')}</button>
+          <button class="qa-settings-btn-save" id="qaSessionNameSave">${t('save')}</button>
         </div>
       </div>
     `;
@@ -1367,7 +1663,7 @@
       });
       await saveSessionsData(data);
       overlay.remove();
-      showToast('\uC138\uC158\uC774 \uC800\uC7A5\uB418\uC5C8\uC2B5\uB2C8\uB2E4.');
+      showToast(currentLang === 'ko' ? '세션이 저장되었습니다.' : 'Session saved.');
     };
 
     input.addEventListener('keydown', e => {
@@ -1406,11 +1702,11 @@
     overlay.innerHTML = `
       <div class="qa-settings-modal" style="width:400px;max-height:80vh;display:flex;flex-direction:column;">
         <div class="qa-settings-modal-header">
-          <h3>\uD83D\uDCC2 \uC800\uC7A5\uB41C \uC138\uC158</h3>
+          <h3>📂 ${t('sessionListTitle')}</h3>
         </div>
         <div class="qa-settings-modal-body" id="qaSessionListBody" style="overflow-y:auto;flex:1;"></div>
         <div class="qa-settings-modal-footer">
-          <button class="qa-settings-btn-close" id="qaSessionListClose">\uB2EB\uAE30</button>
+          <button class="qa-settings-btn-close" id="qaSessionListClose">${t('close')}</button>
         </div>
       </div>
     `;
@@ -1420,7 +1716,7 @@
       const freshData = await getSessionsData();
       const body = qs('#qaSessionListBody', overlay);
       if (freshData.sessions.length === 0) {
-        body.innerHTML = '<div style="text-align:center;color:#64748b;padding:20px;">\uC800\uC7A5\uB41C \uC138\uC158\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.</div>';
+        body.innerHTML = `<div style="text-align:center;color:#64748b;padding:20px;">${t('sessionEmpty')}</div>`;
         return;
       }
       body.innerHTML = freshData.sessions.map((s, i) => {
@@ -1913,8 +2209,8 @@
           </label>
         </div>
         <div class="qa-settings-modal-footer">
-          <button class="qa-settings-btn-close" id="qaImportCancel">\uCDE8\uC18C</button>
-          <button class="qa-settings-btn-save" id="qaImportConfirm">\uAC00\uC838\uC624\uAE30</button>
+          <button class="qa-settings-btn-close" id="qaImportCancel">${t('cancel')}</button>
+          <button class="qa-settings-btn-save" id="qaImportConfirm">${t('load')}</button>
         </div>
       </div>
     `;
@@ -2081,13 +2377,21 @@
       overlay.innerHTML = `
         <div class="qa-settings-modal">
           <div class="qa-settings-modal-header">
-            <h3>\u2699\uFE0F \uB2E8\uCD95\uD0A4 \uC124\uC815</h3>
+            <h3>⚙️ ${t('shortcutSettingsTitle')}</h3>
           </div>
-          <div class="qa-settings-modal-body" id="qaSettingsBody"></div>
+          <div class="qa-settings-modal-body" id="qaSettingsBody">
+            <div class="qa-settings-row" style="margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid #334155;">
+              <span class="qa-settings-label">${t('languageLabel')}</span>
+              <select id="qaLangSelect" class="qa-settings-select" style="background:#1e293b;color:#e2e8f0;border:1px solid #475569;border-radius:6px;padding:4px 8px;font-size:13px;">
+                <option value="ko" ${currentLang === 'ko' ? 'selected' : ''}>${t('languageKo')}</option>
+                <option value="en" ${currentLang === 'en' ? 'selected' : ''}>${t('languageEn')}</option>
+              </select>
+            </div>
+          </div>
           <div class="qa-settings-modal-footer">
-            <button class="qa-settings-btn-restore" id="qaSettingsRestore">\uAE30\uBCF8\uAC12 \uBCF5\uC6D0</button>
-            <button class="qa-settings-btn-close" id="qaSettingsClose">\uB2EB\uAE30</button>
-            <button class="qa-settings-btn-save" id="qaSettingsSave">\uC800\uC7A5</button>
+            <button class="qa-settings-btn-restore" id="qaSettingsRestore">${t('restore')}</button>
+            <button class="qa-settings-btn-close" id="qaSettingsClose">${t('close')}</button>
+            <button class="qa-settings-btn-save" id="qaSettingsSave">${t('save')}</button>
           </div>
         </div>
       `;
@@ -2107,22 +2411,35 @@
 
       function renderRows() {
         const body = qs('#qaSettingsBody', overlay);
-        body.innerHTML = actions.map(a =>
+        // 언어 선택 행 유지 + 단축키 행 추가
+        const langRow = qs('#qaSettingsBody .qa-settings-row', overlay);
+        const shortcutRows = actions.map(a =>
           `<div class="qa-settings-row">
             <span>${a.label}</span>
             <span class="qa-settings-key">${keyLabel(draft[a.key])}</span>
-            <button class="qa-settings-change" data-action="${a.key}">\uBCC0\uACBD</button>
+            <button class="qa-settings-change" data-action="${a.key}">변경</button>
           </div>`
         ).join('');
+        // 언어 선택 행 + 구분선 + 단축키 행
+        body.innerHTML = `
+          <div class="qa-settings-row" style="margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid #334155;">
+            <span class="qa-settings-label">${t('languageLabel')}</span>
+            <select id="qaLangSelect" class="qa-settings-select" style="background:#1e293b;color:#e2e8f0;border:1px solid #475569;border-radius:6px;padding:4px 8px;font-size:13px;">
+              <option value="ko" ${currentLang === 'ko' ? 'selected' : ''}>${t('languageKo')}</option>
+              <option value="en" ${currentLang === 'en' ? 'selected' : ''}>${t('languageEn')}</option>
+            </select>
+          </div>
+          ${shortcutRows}
+        `;
 
         body.querySelectorAll('.qa-settings-change').forEach(btn => {
           btn.onclick = () => {
-            btn.textContent = '\uD0A4 \uC785\uB825...';
+            btn.textContent = '키 입력...';
             btn.classList.add('listening');
             const handler = (ev) => {
               ev.preventDefault(); ev.stopPropagation();
               if (['Alt','Control','Shift','Meta'].includes(ev.key)) return;
-              if (ev.key === 'Escape') { btn.textContent = '\uBCC0\uACBD'; btn.classList.remove('listening'); document.removeEventListener('keydown', handler, true); return; }
+              if (ev.key === 'Escape') { btn.textContent = '변경'; btn.classList.remove('listening'); document.removeEventListener('keydown', handler, true); return; }
               const keyConfig = { key: ev.key.length === 1 ? ev.key.toLowerCase() : ev.key };
               if (ev.altKey) keyConfig.alt = true;
               if (ev.ctrlKey) keyConfig.ctrl = true;
@@ -2147,7 +2464,19 @@
         Object.keys(draft).forEach(k => shortcutKeys[k] = draft[k]);
         saveShortcuts();
         updateHints();
-        overlay.remove();
+        const selectedLang = qs('#qaLangSelect', overlay).value;
+        if (selectedLang !== currentLang) {
+          currentLang = selectedLang;
+          localStorage.setItem('pinthat_lang', selectedLang);
+          overlay.remove();
+          if (panel) { panel.remove(); panel = null; }
+          if (hoverOverlay) { hoverOverlay.remove(); hoverOverlay = null; }
+          buildPanel();
+          applyUserGate();
+          showToast(selectedLang === 'ko' ? '언어가 한국어로 변경되었습니다.' : 'Language changed to English.');
+        } else {
+          overlay.remove();
+        }
       };
     };
   }
@@ -2186,9 +2515,19 @@
       if (panel) {
         const showing = panel.style.display === 'none';
         panel.style.display = showing ? '' : 'none';
-        if (showing) applyUserGate();
+        if (showing) {
+          applyUserGate();
+        } else {
+          // 패널 닫을 때 검수 모드도 끄기
+          STATE.active = false;
+          if (hoverOverlay) hoverOverlay.style.display = 'none';
+          document.body.style.cursor = '';
+          updateModeButton();
+          const btn = document.querySelector('#qaToggleMode');
+          if (btn) btn.innerHTML = '<span class="qa-fb-icon">🔍</span> 검수 모드 OFF';
+          if (btn) btn.classList.remove('active');
+        }
       }
-      toggleActive();
     }
     if (msg.action === 'get-status') {
       sendResponse({ active: STATE.active, feedbackCount: STATE.feedbacks.length });
@@ -2240,7 +2579,7 @@
     overlay.innerHTML = `
       <div class="qa-settings-modal" style="width:420px;max-height:85vh;display:flex;flex-direction:column;">
         <div class="qa-settings-modal-header">
-          <h3>\uD83D\uDD17 GitHub 연동 설정</h3>
+          <h3>🔗 ${t('githubSettingsTitle')}</h3>
         </div>
         <div class="qa-settings-modal-body" id="qaGhSettingsBody" style="overflow-y:auto;flex:1;">
           <div id="qaGhAuthSection"></div>
@@ -2266,8 +2605,8 @@
           </div>
         </div>
         <div class="qa-settings-modal-footer">
-          <button class="qa-settings-btn-close" id="qaGhClose">닫기</button>
-          <button class="qa-settings-btn-save" id="qaGhSave" style="opacity:0.5;cursor:not-allowed;pointer-events:none;">저장</button>
+          <button class="qa-settings-btn-close" id="qaGhClose">${t('close')}</button>
+          <button class="qa-settings-btn-save" id="qaGhSave" style="opacity:0.5;cursor:not-allowed;pointer-events:none;">${t('save')}</button>
         </div>
       </div>
     `;
@@ -2453,7 +2792,7 @@
 
       await saveGitHubSettings(settings);
       overlay.remove();
-      showToast('GitHub 설정이 저장되었습니다.');
+      showToast(t('githubSaved'));
       qs('#qaGhIssueList').style.display = '';
     };
 
@@ -2487,7 +2826,7 @@
 
   async function showGitHubIssueList() {
     const mapping = await getGitHubMapping();
-    if (!mapping) { showToast('GitHub 설정이 필요합니다.'); return; }
+    if (!mapping) { showToast(t('githubRequired')); return; }
 
     const overlay = ce('div', 'qa-feedback-output-overlay');
     overlay.innerHTML = `
@@ -2694,7 +3033,7 @@
 
     qs('#qaIssueReviewResend').onclick = async () => {
       const mapping = await getGitHubMapping();
-      if (!mapping) { showToast('GitHub 설정이 필요합니다.'); return; }
+      if (!mapping) { showToast(t('githubRequired')); return; }
 
       qs('#qaIssueReviewResend').disabled = true;
       qs('#qaIssueReviewResend').innerHTML = '<span class="qa-fb-icon">\uD83D\uDD04</span> 전송 중...';
@@ -2709,7 +3048,7 @@
 
         if (!reopenRes.ok) {
           const status = reopenRes.status;
-          if (status === 401) showToast('❌ 토큰이 만료되었습니다.');
+          if (status === 401) showToast(t('githubTokenExpired'));
           else if (status === 403) showToast('❌ 권한이 없습니다.');
           else if (status === 404) showToast('❌ 이슈를 찾을 수 없습니다.');
           else showToast(`❌ 재오픈 실패 (${status})`);
@@ -2762,7 +3101,7 @@
   async function createGitHubIssue(markdown, feedbackCount) {
     const mapping = await getGitHubMapping();
     if (!mapping) {
-      showToast('GitHub 설정이 필요합니다. 🔗 GitHub 설정에서 연결하세요.');
+      showToast(t('githubRequired2'));
       return null;
     }
 
@@ -2792,11 +3131,11 @@
         const data = await res.json();
         return { number: data.number, url: data.html_url };
       } else if (res.status === 401) {
-        showToast('❌ 토큰이 만료되었습니다. GitHub 설정에서 토큰을 재설정하세요.');
+        showToast(t('githubTokenExpired'));
       } else if (res.status === 403) {
         showToast('❌ 권한이 없습니다. 토큰 권한을 확인하세요.');
       } else if (res.status === 404) {
-        showToast('❌ 레포를 찾을 수 없습니다. GitHub 설정을 확인하세요.');
+        showToast(t('githubRepoNotFound'));
       } else {
         showToast(`❌ Issue 생성 실패 (${res.status})`);
       }
@@ -2902,13 +3241,15 @@
       qs('#qaExpiredBuy', overlay).disabled = true;
 
       try {
+        // Stripe는 https:// URL만 허용 — file:// 또는 chrome-extension:// URL은 fallback
+        const pageUrl = location.href.startsWith('https://') ? location.href : 'https://pinthat.app/payment/success';
         const res = await fetch(`${WORKER_BASE}/create-checkout`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             username: settings.auth.username,
-            successUrl: location.href,
-            cancelUrl: location.href,
+            successUrl: pageUrl,
+            cancelUrl: pageUrl,
           })
         });
         const data = await res.json();
@@ -2948,6 +3289,7 @@
     if (existingTrialBadge) existingTrialBadge.remove();
 
     const settings = await loadGitHubSettings();
+    STATE.isLoggedIn = !!(settings.auth && settings.auth.username);
 
     // 미로그인 → 로그인 게이트
     if (!settings.auth || !settings.auth.username) {
@@ -2985,7 +3327,9 @@
 
     // 로그인됨 → 상태 체크
     panelBody.style.display = '';
+    STATE.isLoggedIn = !!(settings.auth && settings.auth.username);
     const status = await checkUserStatus(true);
+    STATE.isExpired = status.status === 'expired';
 
     if (status.status === 'expired') {
       // 만료 → 전체 잠금
@@ -3015,7 +3359,7 @@
       badge.id = 'qaTrialBadge';
       const urgent = status.daysLeft <= 1;
       badge.style.cssText = `padding:4px 10px;font-size:11px;text-align:center;color:${urgent ? '#ef4444' : '#94a3b8'};background:${urgent ? '#1c0a0a' : '#0f172a'};`;
-      badge.textContent = `체험 D-${status.daysLeft} \uD83D\uDD50`;
+      badge.textContent = t('btnTrialBadge', { n: status.daysLeft }) + ' \uD83D\uDD50';
       panelBody.parentNode.insertBefore(badge, panelBody);
     }
   }

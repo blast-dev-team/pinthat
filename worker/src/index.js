@@ -9,7 +9,7 @@
  *   PLANS — 유저별 Pro 플랜 저장
  */
 
-const LIFETIME_PRICE_ID = 'price_1TH19ZDYzHZgHbYu1LHP93Ty';
+const LIFETIME_PRICE_ID = 'price_1TKZoICyuV4KYuNQ84cMQxfh';
 const TRIAL_DAYS = 7;
 
 async function verifyStripeSignature(payload, sigHeader, secret) {
@@ -236,22 +236,45 @@ export default {
       }
     }
 
+    // ===== Route: GET /success =====
+    if (url.pathname === '/success' && request.method === 'GET') {
+      return new Response(`<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>결제 완료 — PinThat</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0f172a;color:#e2e8f0;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:24px}.card{background:#1e293b;border:1px solid #334155;border-radius:16px;padding:40px 32px;max-width:420px;width:100%;text-align:center}.icon{font-size:56px;margin-bottom:16px}.title{font-size:24px;font-weight:700;color:#f1f5f9;margin-bottom:12px}.desc{font-size:15px;color:#94a3b8;line-height:1.6;margin-bottom:24px}.note{font-size:13px;color:#64748b;background:#0f172a;border-radius:8px;padding:12px 16px}</style></head><body><div class="card"><div class="icon">🎉</div><div class="title">결제가 완료되었습니다!</div><div class="desc">PinThat 평생이용권이 활성화되었습니다.<br>이 창을 닫고 PinThat을 즐겨주세요.</div><div class="note">이 창을 닫아도 됩니다.</div></div></body></html>`, {
+        status: 200,
+        headers: { 'Content-Type': 'text/html;charset=UTF-8', ...CORS_HEADERS },
+      });
+    }
+
+    // ===== Route: GET /cancel =====
+    if (url.pathname === '/cancel' && request.method === 'GET') {
+      return new Response(`<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>결제 취소 — PinThat</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0f172a;color:#e2e8f0;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:24px}.card{background:#1e293b;border:1px solid #334155;border-radius:16px;padding:40px 32px;max-width:420px;width:100%;text-align:center}.icon{font-size:56px;margin-bottom:16px}.title{font-size:24px;font-weight:700;color:#f1f5f9;margin-bottom:12px}.desc{font-size:15px;color:#94a3b8;line-height:1.6;margin-bottom:24px}.note{font-size:13px;color:#64748b;background:#0f172a;border-radius:8px;padding:12px 16px}</style></head><body><div class="card"><div class="icon">↩️</div><div class="title">결제가 취소되었습니다.</div><div class="desc">결제가 완료되지 않았습니다.<br>언제든지 다시 시도하실 수 있습니다.</div><div class="note">이 창을 닫고 PinThat 패널에서 다시 시도해주세요.</div></div></body></html>`, {
+        status: 200,
+        headers: { 'Content-Type': 'text/html;charset=UTF-8', ...CORS_HEADERS },
+      });
+    }
+
     // ===== Route: POST /create-checkout =====
     if (url.pathname === '/create-checkout' && request.method === 'POST') {
       try {
-        const { username, successUrl, cancelUrl } = await request.json();
+        const body = await request.json();
+        const { username } = body;
 
-        if (!username || !successUrl || !cancelUrl) {
-          return Response.json({ error: 'Missing required fields' }, { status: 400, headers: CORS_HEADERS });
+        if (!username) {
+          return Response.json({ error: 'Missing username' }, { status: 400, headers: CORS_HEADERS });
         }
+
+        const SUCCESS_URL = `${url.origin}/success`;
+        const CANCEL_URL = `${url.origin}/cancel`;
 
         const params = new URLSearchParams();
         params.append('mode', 'payment');
-        params.append('success_url', successUrl);
-        params.append('cancel_url', cancelUrl);
+        params.append('success_url', SUCCESS_URL);
+        params.append('cancel_url', CANCEL_URL);
         params.append('line_items[0][price]', LIFETIME_PRICE_ID);
         params.append('line_items[0][quantity]', '1');
         params.append('metadata[github_username]', username);
+        params.append('allow_promotion_codes', 'true');
+
+        console.log('[checkout] Creating session for', username, 'success:', SUCCESS_URL, 'cancel:', CANCEL_URL);
 
         const res = await fetch('https://api.stripe.com/v1/checkout/sessions', {
           method: 'POST',
@@ -263,12 +286,20 @@ export default {
         });
 
         const session = await res.json();
-        if (session.error) {
-          return Response.json({ error: session.error.message }, { status: 400, headers: CORS_HEADERS });
+        console.log('[checkout] Stripe response status:', res.status, 'has url:', !!session.url, 'error:', session.error?.message);
+
+        if (!res.ok || session.error) {
+          return Response.json({
+            error: session.error?.message || 'Stripe error',
+            stripe_code: session.error?.code,
+            stripe_type: session.error?.type,
+            stripe_param: session.error?.param,
+          }, { status: res.status || 400, headers: CORS_HEADERS });
         }
 
         return Response.json({ url: session.url }, { headers: CORS_HEADERS });
       } catch (err) {
+        console.error('[checkout] Error:', err.message);
         return Response.json({ error: err.message }, { status: 500, headers: CORS_HEADERS });
       }
     }
@@ -325,7 +356,7 @@ export default {
       return Response.json({
         service: 'PinThat Auth + Payment',
         status: 'ok',
-        endpoints: ['/auth', '/callback', '/token', '/check-plan', '/create-checkout', '/stripe-webhook'],
+        endpoints: ['/auth', '/callback', '/token', '/check-plan', '/create-checkout', '/stripe-webhook', '/success', '/cancel'],
       }, { headers: CORS_HEADERS });
     }
 
