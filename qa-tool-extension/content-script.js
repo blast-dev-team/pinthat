@@ -275,20 +275,20 @@
         </div>
         <div class="qa-feedback-panel-body" id="qaPanelBody">
           <button class="qa-feedback-btn" id="qaToggleMode">
-            <span class="qa-fb-icon">\uD83D\uDD0D</span> 검수 모드 OFF <span class="qa-shortcut-hint" style="font-size:10px;color:#9CA3AF;margin-left:auto;">\u2325Q</span>
+            <span class="qa-fb-icon">\uD83D\uDD0D</span> 검수 모드 OFF <span class="qa-shortcut-hint" style="font-size:10px;color:#64748b;margin-left:auto;">\u2325Q</span>
           </button>
           <button class="qa-feedback-btn" id="qaModeElement" disabled>
-            <span class="qa-fb-icon">\uD83D\uDCCC</span> 요소 선택 <span class="qa-feedback-badge-count" id="qaCount">0</span> <span class="qa-shortcut-hint" data-action="element" style="font-size:10px;color:#9CA3AF;margin-left:auto;">1</span>
+            <span class="qa-fb-icon">\uD83D\uDCCC</span> 요소 선택 <span class="qa-feedback-badge-count" id="qaCount">0</span> <span class="qa-shortcut-hint" data-action="element" style="font-size:10px;color:#64748b;margin-left:auto;">1</span>
           </button>
           <div class="qa-feedback-sep"></div>
           <button class="qa-feedback-btn" id="qaExport">
-            <span class="qa-fb-icon">\uD83D\uDCCB</span> 마크다운 출력 <span class="qa-shortcut-hint" data-action="export" style="font-size:10px;color:#9CA3AF;margin-left:auto;">E</span>
+            <span class="qa-fb-icon">\uD83D\uDCCB</span> 마크다운 출력 <span class="qa-shortcut-hint" data-action="export" style="font-size:10px;color:#64748b;margin-left:auto;">E</span>
           </button>
           <button class="qa-feedback-btn" id="qaMarkdownImport">
             <span class="qa-fb-icon">\uD83D\uDCCB</span> 마크다운 가져오기
           </button>
           <button class="qa-feedback-btn" id="qaReset" disabled>
-            <span class="qa-fb-icon">\uD83D\uDDD1\uFE0F</span> 초기화 <span class="qa-shortcut-hint" data-action="reset" style="font-size:10px;color:#9CA3AF;margin-left:auto;">R</span>
+            <span class="qa-fb-icon">\uD83D\uDDD1\uFE0F</span> 초기화 <span class="qa-shortcut-hint" data-action="reset" style="font-size:10px;color:#64748b;margin-left:auto;">R</span>
           </button>
           <div class="qa-feedback-sep"></div>
           <button class="qa-feedback-btn" id="qaGitHubSettings">
@@ -444,7 +444,7 @@
 
   /* ===== Popup Drag Helper ===== */
   function makePopupDraggable(popup) {
-    const header = popup.querySelector('.qa-feedback-popup-header') || popup.querySelector('.qa-feedback-review-popup-header') || popup.querySelector('.qa-feedback-inspect-toggle');
+    const header = popup.querySelector('.qa-feedback-popup-header') || popup.querySelector('.qa-feedback-review-popup-header');
     if (!header) return;
     let dragging = false, offX = 0, offY = 0;
     const onMove = (e) => {
@@ -657,7 +657,7 @@
         </div>
       </div>
       <div class="qa-feedback-type-select">
-        <div style="font-size:12px;color:#9CA3AF;margin-bottom:8px;">피드백 유형 선택</div>
+        <div style="font-size:12px;color:#94a3b8;margin-bottom:8px;">피드백 유형 선택</div>
         <div class="qa-feedback-type-buttons">
           <button class="qa-feedback-type-btn" data-type="UI">\uD83C\uDFA8 UI</button>
           <button class="qa-feedback-type-btn" data-type="\uAE30\uB2A5">\u2699\uFE0F 기능</button>
@@ -687,6 +687,15 @@
     };
 
 
+    popup.querySelectorAll('.qa-inspect-value').forEach(el => {
+      el.style.cursor = 'pointer';
+      el.title = '클릭하여 복사';
+      el.onclick = (e) => {
+        e.stopPropagation();
+        navigator.clipboard.writeText(el.textContent.trim()).catch(() => {});
+        showToast(t('toastCopied'));
+      };
+    });
 
     popup.querySelectorAll('.qa-feedback-type-btn').forEach(btn => {
       btn.onclick = () => {
@@ -795,7 +804,7 @@
         <div class="qa-fb-loc">${info.section}</div>
       </div>
       <div class="qa-feedback-type-select">
-        <div style="font-size:12px;color:#9CA3AF;margin-bottom:8px;">이동 방식 선택</div>
+        <div style="font-size:12px;color:#94a3b8;margin-bottom:8px;">이동 방식 선택</div>
         <div class="qa-feedback-move-sub-buttons">
           <button class="qa-feedback-move-sub-btn" data-move="component">\uD83D\uDCE6 컴포넌트 이동</button>
           <button class="qa-feedback-move-sub-btn" data-move="free">\uD83D\uDD00 자유 위치 이동</button>
@@ -844,7 +853,7 @@
         <div class="qa-fb-sel">${info.selector}</div>
       </div>
       <div class="qa-feedback-move-options">
-        <div style="font-size:12px;color:#9CA3AF;margin-bottom:8px;">이동 방향 선택</div>
+        <div style="font-size:12px;color:#94a3b8;margin-bottom:8px;">이동 방향 선택</div>
         <div class="qa-feedback-move-direction-buttons">
           <button class="qa-feedback-move-option-btn" data-dir="left">\u2B05 왼쪽</button>
           <button class="qa-feedback-move-option-btn" data-dir="right">\u27A1 오른쪽</button>
@@ -1145,8 +1154,8 @@
     popup.innerHTML = `
       <div class="qa-feedback-popup-header">
         <div style="margin-bottom:4px;"><span class="qa-feedback-type-label">\uD83D\uDD00 자유 위치 이동</span></div>
-        <div style="font-size:12px;color:#9CA3AF;margin-top:4px;">출발: <code>${truncate(sourceInfo.selector, 30)}</code></div>
-        <div style="font-size:12px;color:#9CA3AF;margin-top:2px;">목적지: ${destDesc} (${destX}, ${destY})</div>
+        <div style="font-size:12px;color:#64748b;margin-top:4px;">출발: <code>${truncate(sourceInfo.selector, 30)}</code></div>
+        <div style="font-size:12px;color:#64748b;margin-top:2px;">목적지: ${destDesc} (${destX}, ${destY})</div>
       </div>
       <div class="qa-feedback-popup-body">
         <textarea placeholder="예: 사이드바 아래로 옮겨주세요" id="qaMoveMemo" autofocus></textarea>
@@ -1373,15 +1382,15 @@
       <div class="qa-feedback-output-modal">
         <div class="qa-feedback-output-modal-header">
           <h3>\uB9C8\uD06C\uB2E4\uC6B4 \uCD9C\uB825 (${STATE.feedbacks.length}\uAC74)</h3>
-          <button onclick="this.closest('.qa-feedback-output-overlay').remove()" style="background:none;border:none;font-size:18px;cursor:pointer;color:#9CA3AF;">\u2715</button>
+          <button onclick="this.closest('.qa-feedback-output-overlay').remove()" style="background:none;border:none;font-size:18px;cursor:pointer;color:#94a3b8;">\u2715</button>
         </div>
         <div class="qa-feedback-output-pre">
           <pre id="qaOutputPre"></pre>
         </div>
         <div class="qa-feedback-output-actions">
-          <button style="background:#F3F4F6;color:#374151;" onclick="this.closest('.qa-feedback-output-overlay').remove()">\uB2EB\uAE30</button>
-          <button style="background:#1a1a1a;color:#fff;" id="qaCopyBtn">\uD074\uB9BD\uBCF4\uB4DC \uBCF5\uC0AC</button>
-          <button style="background:#1a1a1a;color:#fff;" id="qaGhIssueBtn" disabled>\uD83D\uDD17 GitHub Issue</button>
+          <button style="background:#f1f5f9;color:#475569;" onclick="this.closest('.qa-feedback-output-overlay').remove()">\uB2EB\uAE30</button>
+          <button style="background:#1e293b;color:#fff;" id="qaCopyBtn">\uD074\uB9BD\uBCF4\uB4DC \uBCF5\uC0AC</button>
+          <button style="background:#24292f;color:#fff;" id="qaGhIssueBtn" disabled>\uD83D\uDD17 GitHub Issue</button>
         </div>
       </div>
     `;
@@ -1451,15 +1460,15 @@
           <div class="qa-gh-field" style="margin-top:12px;">
             <label>전송 범위</label>
             <div style="margin-top:6px;">
-              <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#374151;cursor:pointer;margin-bottom:4px;">
+              <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#e2e8f0;cursor:pointer;margin-bottom:4px;">
                 <input type="radio" name="qaSendScope" value="all" checked style="accent-color:#3b82f6;" /> 전체 피드백 (${STATE.feedbacks.length}건)
               </label>
-              <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#374151;cursor:pointer;">
+              <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#e2e8f0;cursor:pointer;">
                 <input type="radio" name="qaSendScope" value="selected" style="accent-color:#3b82f6;" /> 선택한 피드백만
               </label>
             </div>
           </div>
-          <div id="qaIssueFbList" style="display:none;margin-top:10px;max-height:200px;overflow-y:auto;border:1px solid #E5E7EB;border-radius:8px;padding:8px;">
+          <div id="qaIssueFbList" style="display:none;margin-top:10px;max-height:200px;overflow-y:auto;border:1px solid #334155;border-radius:8px;padding:8px;">
             ${fbListHtml}
           </div>
         </div>
@@ -1515,7 +1524,7 @@
         showToast(`\u2705 Issue #${result.number} 생성 완료 (피드백 ${selectedFeedbacks.length}건)`);
         setTimeout(() => {
           ghIssueBtn.textContent = `Issue #${result.number} 열기`;
-          ghIssueBtn.style.background = '#1a1a1a';
+          ghIssueBtn.style.background = '#24292f';
           ghIssueBtn.disabled = false;
           ghIssueBtn.onclick = () => window.open(result.url, '_blank');
         }, 2000);
@@ -1628,8 +1637,8 @@
           <h3>💾 ${t('sessionNameTitle')}</h3>
         </div>
         <div class="qa-settings-modal-body">
-          <div style="margin-bottom:12px;font-size:13px;color:#9CA3AF;">\uD53C\uB4DC\uBC31 ${STATE.feedbacks.length}\uAC74\uC744 \uC138\uC158\uC73C\uB85C \uC800\uC7A5\uD569\uB2C8\uB2E4.</div>
-          <input type="text" id="qaSessionNameInput" value="${defaultName}" style="width:100%;padding:10px;border:1px solid #D1D5DB;border-radius:8px;background:#FFFFFF;color:#1a1a1a;font-size:13px;outline:none;" />
+          <div style="margin-bottom:12px;font-size:13px;color:#94a3b8;">\uD53C\uB4DC\uBC31 ${STATE.feedbacks.length}\uAC74\uC744 \uC138\uC158\uC73C\uB85C \uC800\uC7A5\uD569\uB2C8\uB2E4.</div>
+          <input type="text" id="qaSessionNameInput" value="${defaultName}" style="width:100%;padding:10px;border:1px solid #475569;border-radius:8px;background:#0f172a;color:#e2e8f0;font-size:13px;outline:none;" />
         </div>
         <div class="qa-settings-modal-footer">
           <button class="qa-settings-btn-close" id="qaSessionNameCancel">${t('cancel')}</button>
@@ -1713,7 +1722,7 @@
       const freshData = await getSessionsData();
       const body = qs('#qaSessionListBody', overlay);
       if (freshData.sessions.length === 0) {
-        body.innerHTML = `<div style="text-align:center;color:#9CA3AF;padding:20px;">${t('sessionEmpty')}</div>`;
+        body.innerHTML = `<div style="text-align:center;color:#64748b;padding:20px;">${t('sessionEmpty')}</div>`;
         return;
       }
       body.innerHTML = freshData.sessions.map((s, i) => {
@@ -1724,9 +1733,9 @@
         const issueInfo = (s.issueHistory && s.issueHistory.length > 0) ? s.issueHistory[s.issueHistory.length - 1] : null;
         const issueTag = issueInfo ? ` → <a href="${issueInfo.issueUrl}" target="_blank" style="color:#3b82f6;text-decoration:none;">Issue #${issueInfo.issueNumber}</a> 전송됨` : '';
         return `
-          <div style="padding:12px 0;border-bottom:1px solid #E5E7EB;">
-            <div style="font-size:14px;font-weight:600;color:#111827;margin-bottom:4px;">\u25B8 ${s.name}</div>
-            <div style="font-size:12px;color:#9CA3AF;margin-bottom:8px;">
+          <div style="padding:12px 0;border-bottom:1px solid #334155;">
+            <div style="font-size:14px;font-weight:600;color:#e2e8f0;margin-bottom:4px;">\u25B8 ${s.name}</div>
+            <div style="font-size:12px;color:#64748b;margin-bottom:8px;">
               ${count}\uAC74 \u00B7 ${date} \u00B7 <span style="color:${statusColor}">${s.status}</span>${issueTag}
             </div>
             <div style="display:flex;gap:6px;">
@@ -1884,7 +1893,7 @@
     popup.innerHTML = `
       <div class="qa-feedback-review-popup-header">
         <div style="font-size:14px;font-weight:600;">${circled(idx + 1)} ${typeTag}${tag}${sectionLabel}</div>
-        <div style="font-size:12px;color:#9CA3AF;margin-top:4px;">\uC6D0\uBCF8 \uD53C\uB4DC\uBC31: "${truncate(fb.feedback, 60)}"</div>
+        <div style="font-size:12px;color:#64748b;margin-top:4px;">\uC6D0\uBCF8 \uD53C\uB4DC\uBC31: "${truncate(fb.feedback, 60)}"</div>
         ${notFoundMsg}
       </div>
       <div class="qa-feedback-review-popup-body">
@@ -1899,8 +1908,8 @@
           </label>
         </div>
         <div style="margin-top:10px;">
-          <div style="font-size:12px;color:#9CA3AF;margin-bottom:4px;">\uBA54\uBAA8:</div>
-          <textarea id="qaReviewNote" style="width:100%;min-height:50px;border:1px solid #E5E7EB;border-radius:8px;padding:8px;font-size:13px;font-family:inherit;resize:vertical;outline:none;">${fb.reviewNote || ''}</textarea>
+          <div style="font-size:12px;color:#64748b;margin-bottom:4px;">\uBA54\uBAA8:</div>
+          <textarea id="qaReviewNote" style="width:100%;min-height:50px;border:1px solid #e2e8f0;border-radius:8px;padding:8px;font-size:13px;font-family:inherit;resize:vertical;outline:none;">${fb.reviewNote || ''}</textarea>
         </div>
         <div style="display:flex;justify-content:flex-end;margin-top:10px;">
           <button id="qaReviewConfirm" style="padding:7px 16px;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;border:none;background:#2563eb;color:#fff;">\uD655\uC778</button>
@@ -1959,7 +1968,7 @@
 
       const cancelBtn = ce('button', 'qa-feedback-btn');
       cancelBtn.id = 'qaReviewCancel';
-      cancelBtn.style.color = '#9CA3AF';
+      cancelBtn.style.color = '#94a3b8';
       cancelBtn.innerHTML = '<span class="qa-fb-icon">\u274C</span> \uC7AC\uAC80\uC218 \uCDE8\uC18C';
       cancelBtn.onclick = cancelReview;
 
@@ -1982,14 +1991,14 @@
       <div class="qa-feedback-output-modal">
         <div class="qa-feedback-output-modal-header">
           <h3>\uC7AC\uAC80\uC218 \uB9AC\uD3EC\uD2B8</h3>
-          <button onclick="this.closest('.qa-feedback-output-overlay').remove()" style="background:none;border:none;font-size:18px;cursor:pointer;color:#9CA3AF;">\u2715</button>
+          <button onclick="this.closest('.qa-feedback-output-overlay').remove()" style="background:none;border:none;font-size:18px;cursor:pointer;color:#94a3b8;">\u2715</button>
         </div>
         <div class="qa-feedback-output-pre">
           <pre id="qaReviewOutputPre"></pre>
         </div>
         <div class="qa-feedback-output-actions">
-          <button style="background:#F3F4F6;color:#374151;" onclick="this.closest('.qa-feedback-output-overlay').remove()">\uB2EB\uAE30</button>
-          <button style="background:#1a1a1a;color:#fff;" id="qaReviewCopyBtn">\uD074\uB9BD\uBCF4\uB4DC \uBCF5\uC0AC</button>
+          <button style="background:#f1f5f9;color:#475569;" onclick="this.closest('.qa-feedback-output-overlay').remove()">\uB2EB\uAE30</button>
+          <button style="background:#1e293b;color:#fff;" id="qaReviewCopyBtn">\uD074\uB9BD\uBCF4\uB4DC \uBCF5\uC0AC</button>
           <button style="background:#f59e0b;color:#fff;" id="qaReviewFinishBtn">\uC7AC\uAC80\uC218 \uC885\uB8CC</button>
         </div>
       </div>
@@ -2198,9 +2207,9 @@
           <h3>\uD83D\uDCCB \uB9C8\uD06C\uB2E4\uC6B4 \uAC00\uC838\uC624\uAE30</h3>
         </div>
         <div class="qa-settings-modal-body" style="flex:1;">
-          <div style="font-size:12px;color:#9CA3AF;margin-bottom:8px;">QA \uD53C\uB4DC\uBC31 \uB9C8\uD06C\uB2E4\uC6B4\uC744 \uBD99\uC5EC\uB123\uC73C\uC138\uC694.</div>
-          <textarea id="qaImportTextarea" style="width:100%;min-height:200px;padding:10px;border:1px solid #D1D5DB;border-radius:8px;background:#FFFFFF;color:#1a1a1a;font-size:12px;font-family:'SF Mono',Menlo,monospace;outline:none;resize:vertical;" placeholder="# QA \uD53C\uB4DC\uBC31 \u2014 demo.html\n...\n\n\uC5EC\uAE30\uC5D0 \uBD99\uC5EC\uB123\uAE30"></textarea>
-          <label style="display:flex;align-items:center;gap:6px;margin-top:10px;font-size:12px;color:#9CA3AF;cursor:pointer;">
+          <div style="font-size:12px;color:#94a3b8;margin-bottom:8px;">QA \uD53C\uB4DC\uBC31 \uB9C8\uD06C\uB2E4\uC6B4\uC744 \uBD99\uC5EC\uB123\uC73C\uC138\uC694.</div>
+          <textarea id="qaImportTextarea" style="width:100%;min-height:200px;padding:10px;border:1px solid #475569;border-radius:8px;background:#0f172a;color:#e2e8f0;font-size:12px;font-family:'SF Mono',Menlo,monospace;outline:none;resize:vertical;" placeholder="# QA \uD53C\uB4DC\uBC31 \u2014 demo.html\n...\n\n\uC5EC\uAE30\uC5D0 \uBD99\uC5EC\uB123\uAE30"></textarea>
+          <label style="display:flex;align-items:center;gap:6px;margin-top:10px;font-size:12px;color:#94a3b8;cursor:pointer;">
             <input type="checkbox" id="qaImportReviewMode" style="accent-color:#f59e0b;" />
             \uAC00\uC838\uC628 \uD6C4 \uC7AC\uAC80\uC218 \uBAA8\uB4DC\uB85C \uC9C4\uC785
           </label>
@@ -2377,9 +2386,9 @@
             <h3>⚙️ ${t('shortcutSettingsTitle')}</h3>
           </div>
           <div class="qa-settings-modal-body" id="qaSettingsBody">
-            <div class="qa-settings-row" style="margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid #E5E7EB;">
+            <div class="qa-settings-row" style="margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid #334155;">
               <span class="qa-settings-label">${t('languageLabel')}</span>
-              <select id="qaLangSelect" class="qa-settings-select" style="background:#FFFFFF;color:#374151;border:1px solid #D1D5DB;border-radius:6px;padding:4px 8px;font-size:13px;">
+              <select id="qaLangSelect" class="qa-settings-select" style="background:#1e293b;color:#e2e8f0;border:1px solid #475569;border-radius:6px;padding:4px 8px;font-size:13px;">
                 <option value="ko" ${currentLang === 'ko' ? 'selected' : ''}>${t('languageKo')}</option>
                 <option value="en" ${currentLang === 'en' ? 'selected' : ''}>${t('languageEn')}</option>
               </select>
@@ -2419,9 +2428,9 @@
         ).join('');
         // 언어 선택 행 + 구분선 + 단축키 행
         body.innerHTML = `
-          <div class="qa-settings-row" style="margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid #E5E7EB;">
+          <div class="qa-settings-row" style="margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid #334155;">
             <span class="qa-settings-label">${t('languageLabel')}</span>
-            <select id="qaLangSelect" class="qa-settings-select" style="background:#FFFFFF;color:#374151;border:1px solid #D1D5DB;border-radius:6px;padding:4px 8px;font-size:13px;">
+            <select id="qaLangSelect" class="qa-settings-select" style="background:#1e293b;color:#e2e8f0;border:1px solid #475569;border-radius:6px;padding:4px 8px;font-size:13px;">
               <option value="ko" ${currentLang === 'ko' ? 'selected' : ''}>${t('languageKo')}</option>
               <option value="en" ${currentLang === 'en' ? 'selected' : ''}>${t('languageEn')}</option>
             </select>
@@ -2587,13 +2596,13 @@
             </div>
             <div class="qa-gh-field">
               <label>레포 선택</label>
-              <select id="qaGhRepoSelect" style="width:100%;padding:10px;border:1px solid #D1D5DB;border-radius:8px;background:#FFFFFF;color:#1a1a1a;font-size:13px;outline:none;">
+              <select id="qaGhRepoSelect" style="width:100%;padding:10px;border:1px solid #475569;border-radius:8px;background:#0f172a;color:#e2e8f0;font-size:13px;outline:none;">
                 <option value="">레포를 선택하세요...</option>
               </select>
             </div>
           </div>
           <div id="qaGhManualRepoArea" style="display:none;margin-top:12px;">
-            <div id="qaGhManualToggle" style="font-size:12px;color:#9CA3AF;cursor:pointer;user-select:none;">\u25B6 레포 직접 입력</div>
+            <div id="qaGhManualToggle" style="font-size:12px;color:#94a3b8;cursor:pointer;user-select:none;">\u25B6 레포 직접 입력</div>
             <div id="qaGhManualSection" style="display:none;margin-top:8px;">
               <div class="qa-gh-field">
                 <input type="text" id="qaGhManualRepo" placeholder="owner/repo 또는 GitHub URL" />
@@ -2630,10 +2639,10 @@
         oauthToken = settings.auth.token;
         authSection.innerHTML = `
           <div style="display:flex;align-items:center;gap:10px;padding:8px 0;">
-            <img src="${escapeHtml(settings.auth.avatarUrl || '')}" style="width:32px;height:32px;border-radius:50%;border:1px solid #D1D5DB;" />
+            <img src="${escapeHtml(settings.auth.avatarUrl || '')}" style="width:32px;height:32px;border-radius:50%;border:1px solid #475569;" />
             <div>
               <div style="font-size:13px;font-weight:600;color:#22c55e;">\u2705 @${escapeHtml(settings.auth.username || '')} 연결됨</div>
-              <div style="font-size:11px;color:#9CA3AF;">OAuth 로그인</div>
+              <div style="font-size:11px;color:#64748b;">OAuth 로그인</div>
             </div>
             <button id="qaGhDisconnect" style="margin-left:auto;padding:4px 10px;border-radius:6px;font-size:11px;border:1px solid #ef4444;color:#ef4444;background:none;cursor:pointer;">연결 해제</button>
           </div>
@@ -2657,7 +2666,7 @@
         qs('#qaGhManualRepoArea', overlay).style.display = 'none';
         authSection.innerHTML = `
           <div class="qa-gh-field">
-            <button class="qa-feedback-btn" id="qaGhOAuthBtn" style="width:100%;justify-content:center;background:#1a1a1a;color:#fff;border-radius:8px;padding:12px;">
+            <button class="qa-feedback-btn" id="qaGhOAuthBtn" style="width:100%;justify-content:center;background:#24292f;color:#fff;border-radius:8px;padding:12px;">
               <span class="qa-fb-icon">\uD83D\uDC19</span> GitHub로 로그인
             </button>
           </div>
@@ -2830,7 +2839,7 @@
       <div class="qa-feedback-output-modal" style="max-width:520px;">
         <div class="qa-feedback-output-modal-header">
           <h3>\uD83D\uDCCB GitHub 이슈 현황</h3>
-          <button onclick="this.closest('.qa-feedback-output-overlay').remove()" style="background:none;border:none;font-size:18px;cursor:pointer;color:#9CA3AF;">\u2715</button>
+          <button onclick="this.closest('.qa-feedback-output-overlay').remove()" style="background:none;border:none;font-size:18px;cursor:pointer;color:#94a3b8;">\u2715</button>
         </div>
         <div class="qa-gh-filter-tabs" id="qaGhFilterTabs">
           <button class="qa-gh-filter-tab active" data-filter="all">전체</button>
@@ -2839,15 +2848,15 @@
           <button class="qa-gh-filter-tab" data-filter="archived">아카이브</button>
         </div>
         <div id="qaGhIssueListBody" style="padding:12px 20px;overflow-y:auto;max-height:50vh;">
-          <div style="text-align:center;color:#9CA3AF;padding:20px;">이슈 불러오는 중...</div>
+          <div style="text-align:center;color:#94a3b8;padding:20px;">이슈 불러오는 중...</div>
         </div>
-        <div id="qaGhPagination" style="display:none;padding:8px 20px;display:flex;align-items:center;justify-content:center;gap:12px;border-top:1px solid #E5E7EB;font-size:12px;color:#9CA3AF;">
+        <div id="qaGhPagination" style="display:none;padding:8px 20px;display:flex;align-items:center;justify-content:center;gap:12px;border-top:1px solid #e2e8f0;font-size:12px;color:#94a3b8;">
           <button id="qaGhPrev" class="qa-gh-action-btn" disabled>\u25C0 이전</button>
           <span id="qaGhPageInfo">1</span>
           <button id="qaGhNext" class="qa-gh-action-btn">\u25B6 다음</button>
         </div>
         <div class="qa-feedback-output-actions">
-          <button style="background:#F3F4F6;color:#374151;" onclick="this.closest('.qa-feedback-output-overlay').remove()">닫기</button>
+          <button style="background:#f1f5f9;color:#475569;" onclick="this.closest('.qa-feedback-output-overlay').remove()">닫기</button>
         </div>
       </div>
     `;
@@ -2862,19 +2871,19 @@
     const currentPath = location.pathname.split('/').pop() || 'index';
 
     async function loadPage() {
-      body.innerHTML = '<div style="text-align:center;color:#9CA3AF;padding:20px;">이슈 불러오는 중...</div>';
+      body.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:20px;">이슈 불러오는 중...</div>';
 
       // 아카이브 탭은 로컬 데이터
       if (activeFilter === 'archived') {
         paginationEl.style.display = 'none';
         if (archivedList.length === 0) {
-          body.innerHTML = '<div style="text-align:center;color:#9CA3AF;padding:20px;">아카이브된 이슈가 없습니다.</div>';
+          body.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:20px;">아카이브된 이슈가 없습니다.</div>';
           return;
         }
         body.innerHTML = archivedList.map(a => `
           <div class="qa-gh-issue-row">
             <div class="qa-gh-issue-info">
-              <div style="font-size:13px;font-weight:500;color:#9CA3AF;">\u2705 #${a.number} ${a.title || ''}</div>
+              <div style="font-size:13px;font-weight:500;color:#94a3b8;">\u2705 #${a.number} ${a.title || ''}</div>
             </div>
             <div class="qa-gh-issue-actions">
               <button class="qa-gh-action-btn qa-gh-restore-btn" data-number="${a.number}" style="color:#3b82f6;border-color:#3b82f6;">복원</button>
@@ -2899,7 +2908,7 @@
         if (activeFilter === 'closed') issues = issues.filter(i => i.state === 'closed');
 
         if (issues.length === 0 && currentPage === 1) {
-          body.innerHTML = '<div style="text-align:center;color:#9CA3AF;padding:20px;">표시할 이슈가 없습니다.</div>';
+          body.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:20px;">표시할 이슈가 없습니다.</div>';
           paginationEl.style.display = 'none';
           return;
         }
@@ -2910,12 +2919,12 @@
           const date = issue.created_at ? issue.created_at.slice(0, 10) : '';
           const isSamePage = issue.title && issue.title.includes(currentPath);
           const reviewBtn = (!isOpen && isSamePage) ? `<button class="qa-gh-action-btn qa-gh-review-btn" data-number="${issue.number}" data-url="${issue.html_url}" data-title="${issue.title.replace(/"/g, '&quot;')}">재검수</button>` : '';
-          const archiveBtn = !isOpen ? `<button class="qa-gh-action-btn qa-gh-archive-btn" data-number="${issue.number}" data-url="${issue.html_url}" data-title="${issue.title.replace(/"/g, '&quot;')}" style="color:#9CA3AF;">아카이브</button>` : '';
+          const archiveBtn = !isOpen ? `<button class="qa-gh-action-btn qa-gh-archive-btn" data-number="${issue.number}" data-url="${issue.html_url}" data-title="${issue.title.replace(/"/g, '&quot;')}" style="color:#94a3b8;">아카이브</button>` : '';
           return `
             <div class="qa-gh-issue-row">
               <div class="qa-gh-issue-info">
-                <div style="font-size:13px;font-weight:500;color:#111827;">${icon} ${issue.title}</div>
-                <div style="font-size:11px;color:#9CA3AF;margin-top:3px;">${date}</div>
+                <div style="font-size:13px;font-weight:500;color:#1e293b;">${icon} ${issue.title}</div>
+                <div style="font-size:11px;color:#94a3b8;margin-top:3px;">${date}</div>
               </div>
               <div class="qa-gh-issue-actions">
                 ${reviewBtn}${archiveBtn}
@@ -3007,9 +3016,9 @@
     reviewUI.id = 'qaIssueReviewUI';
     reviewUI.innerHTML = `
       <div class="qa-feedback-sep"></div>
-      <div style="padding:8px 14px;font-size:12px;color:#9CA3AF;">
+      <div style="padding:8px 14px;font-size:12px;color:#94a3b8;">
         \uD83D\uDD0D 재검수 모드<br>
-        <span style="color:#111827;font-weight:600;">${truncate(issueTitle, 30)} #${issueNumber}</span>
+        <span style="color:#e2e8f0;font-weight:600;">${truncate(issueTitle, 30)} #${issueNumber}</span>
       </div>
       <button class="qa-feedback-btn" id="qaIssueReviewOk" style="color:#22c55e;">
         <span class="qa-fb-icon">\u2705</span> 검수 완료
@@ -3017,7 +3026,7 @@
       <button class="qa-feedback-btn" id="qaIssueReviewResend" style="color:#f59e0b;">
         <span class="qa-fb-icon">\uD83D\uDD04</span> 재전송
       </button>
-      <button class="qa-feedback-btn" id="qaIssueReviewCancel" style="color:#9CA3AF;">
+      <button class="qa-feedback-btn" id="qaIssueReviewCancel" style="color:#94a3b8;">
         <span class="qa-fb-icon">\u274C</span> 취소
       </button>
     `;
@@ -3207,13 +3216,13 @@
           <h3>\uD83D\uDCCC PinThat</h3>
         </div>
         <div class="qa-settings-modal-body" style="text-align:center;">
-          <div style="font-size:14px;color:#111827;margin-bottom:8px;">무료 체험이 종료되었습니다.</div>
-          <div style="font-size:13px;color:#9CA3AF;line-height:1.6;margin-bottom:16px;">PinThat을 계속 사용하려면<br>평생이용권을 구매해주세요.</div>
-          <div style="padding:16px;border:1px solid #E5E7EB;border-radius:10px;margin-bottom:16px;">
-            <div style="font-size:20px;font-weight:700;color:#111827;">\uD83D\uDC8E 평생이용권 $8.98</div>
-            <div style="font-size:12px;color:#9CA3AF;margin-top:4px;">한 번 결제, 영구 사용</div>
+          <div style="font-size:14px;color:#e2e8f0;margin-bottom:8px;">무료 체험이 종료되었습니다.</div>
+          <div style="font-size:13px;color:#94a3b8;line-height:1.6;margin-bottom:16px;">PinThat을 계속 사용하려면<br>평생이용권을 구매해주세요.</div>
+          <div style="padding:16px;border:1px solid #475569;border-radius:10px;margin-bottom:16px;">
+            <div style="font-size:20px;font-weight:700;color:#e2e8f0;">\uD83D\uDC8E 평생이용권 $8.98</div>
+            <div style="font-size:12px;color:#94a3b8;margin-top:4px;">한 번 결제, 영구 사용</div>
           </div>
-          <div id="qaExpiredUser" style="font-size:11px;color:#9CA3AF;"></div>
+          <div id="qaExpiredUser" style="font-size:11px;color:#64748b;"></div>
         </div>
         <div class="qa-settings-modal-footer">
           <button class="qa-settings-btn-close" id="qaExpiredCancel">나중에</button>
@@ -3295,8 +3304,8 @@
       gate.id = 'qaLoginGate';
       gate.style.cssText = 'padding:24px 16px;text-align:center;';
       gate.innerHTML = `
-        <div style="font-size:13px;color:#9CA3AF;line-height:1.6;margin-bottom:16px;">PinThat을 시작하려면<br>GitHub 로그인이 필요합니다.</div>
-        <button class="qa-feedback-btn" id="qaLoginGateBtn" style="width:100%;justify-content:center;background:#1a1a1a;color:#fff;border-radius:8px;padding:12px;">
+        <div style="font-size:13px;color:#94a3b8;line-height:1.6;margin-bottom:16px;">PinThat을 시작하려면<br>GitHub 로그인이 필요합니다.</div>
+        <button class="qa-feedback-btn" id="qaLoginGateBtn" style="width:100%;justify-content:center;background:#24292f;color:#fff;border-radius:8px;padding:12px;">
           <span class="qa-fb-icon">\uD83D\uDC19</span> GitHub로 로그인
         </button>
       `;
@@ -3335,14 +3344,14 @@
       gate.id = 'qaLoginGate';
       gate.style.cssText = 'padding:24px 16px;text-align:center;';
       gate.innerHTML = `
-        <div style="font-size:13px;color:#111827;margin-bottom:8px;">무료 체험이 종료되었습니다.</div>
-        <div style="font-size:12px;color:#9CA3AF;line-height:1.6;margin-bottom:16px;">PinThat을 계속 사용하려면<br>평생이용권을 구매해주세요.</div>
-        <div style="padding:12px;border:1px solid #E5E7EB;border-radius:8px;margin-bottom:12px;">
-          <div style="font-size:16px;font-weight:700;color:#111827;">\uD83D\uDC8E $8.98 평생이용권</div>
-          <div style="font-size:11px;color:#9CA3AF;margin-top:2px;">한 번 결제, 영구 사용</div>
+        <div style="font-size:13px;color:#e2e8f0;margin-bottom:8px;">무료 체험이 종료되었습니다.</div>
+        <div style="font-size:12px;color:#94a3b8;line-height:1.6;margin-bottom:16px;">PinThat을 계속 사용하려면<br>평생이용권을 구매해주세요.</div>
+        <div style="padding:12px;border:1px solid #475569;border-radius:8px;margin-bottom:12px;">
+          <div style="font-size:16px;font-weight:700;color:#e2e8f0;">\uD83D\uDC8E $8.98 평생이용권</div>
+          <div style="font-size:11px;color:#94a3b8;margin-top:2px;">한 번 결제, 영구 사용</div>
         </div>
         <button class="qa-feedback-btn" id="qaExpiredBuyBtn" style="width:100%;justify-content:center;background:#3b82f6;color:#fff;border-radius:8px;padding:12px;">구매하기</button>
-        <div style="font-size:11px;color:#9CA3AF;margin-top:8px;">@${escapeHtml(settings.auth.username)} 로그인됨</div>
+        <div style="font-size:11px;color:#64748b;margin-top:8px;">@${escapeHtml(settings.auth.username)} 로그인됨</div>
       `;
       panelBody.parentNode.appendChild(gate);
 
