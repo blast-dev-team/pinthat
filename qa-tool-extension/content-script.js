@@ -511,15 +511,11 @@
     const fontShort = (s.fontFamily || '').split(',')[0].replace(/['"]/g, '').trim();
 
     popup.innerHTML = `
-      <div class="qa-feedback-popup-header">
-        <div class="qa-fb-sel">${info.selector}</div>
-        <div class="qa-fb-loc">${info.section}</div>
-      </div>
       <div class="qa-feedback-inspect">
         <button class="qa-feedback-inspect-toggle" id="qaInspectToggle">
-          📐 디자인 정보 <span class="qa-inspect-arrow">▼</span>
+          📐 디자인 정보 <span class="qa-inspect-arrow">▲</span>
         </button>
-        <div class="qa-feedback-inspect-body" id="qaInspectBody" style="display:none;">
+        <div class="qa-feedback-inspect-body" id="qaInspectBody">
 
           <div class="qa-inspect-section">
             <div class="qa-inspect-title">📏 크기</div>
@@ -689,6 +685,7 @@
         arrow.textContent = '▼';
       }
     };
+
 
     popup.querySelectorAll('.qa-inspect-value').forEach(el => {
       el.style.cursor = 'pointer';
