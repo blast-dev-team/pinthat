@@ -1024,7 +1024,7 @@
 
     document.addEventListener('mousemove', onDragArrowMove);
     // mouseup 리스너를 약간 지연 — 버튼 클릭의 mouseup이 바로 트리거되는 것 방지
-    setTimeout(() => document.addEventListener('mouseup', onDragArrowEnd), 100);
+    setTimeout(() => document.addEventListener('mouseup', onDragArrowEnd), 300);
   }
 
   function onDragArrowMove(e) {
@@ -1037,7 +1037,16 @@
     document.removeEventListener('mousemove', onDragArrowMove);
     document.removeEventListener('mouseup', onDragArrowEnd);
 
-    if (!STATE.moveSource) return;
+    if (!STATE.moveSource || !dragSourceCenter) return;
+
+    // 최소 이동 거리 체크 (20px 미만이면 드래그 미완료로 간주)
+    const dx = e.clientX - dragSourceCenter.x;
+    const dy = e.clientY - dragSourceCenter.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist < 20) {
+      document.addEventListener('mouseup', onDragArrowEnd);
+      return;
+    }
 
     const sourceInfo = STATE.moveSource.info;
     const sourceEl = STATE.moveSource.el;
