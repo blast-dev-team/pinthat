@@ -1,0 +1,14 @@
+{
+  "name": "pinthat",
+  "private": true,
+  "scripts": {
+    "dev": "pnpm --filter @pinthat/landing dev",
+    "build": "pnpm --filter @pinthat/landing build",
+    "preview": "pnpm --filter @pinthat/landing preview",
+    "extension:dev": "pnpm --filter @pinthat/extension dev",
+    "extension:build": "pnpm --filter @pinthat/extension build",
+    "worker:dev": "pnpm --filter @pinthat/worker dev",
+    "worker:deploy": "pnpm --filter @pinthat/worker deploy"
+  },
+  "packageManager": "pnpm@10.11.0"
+}

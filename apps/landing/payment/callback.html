@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PinThat — 결제 결과</title>
+  <link rel="icon" type="image/svg+xml" href="/pinthat_logo.svg">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 24px;
+    }
+    .card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 16px;
+      padding: 40px 32px;
+      max-width: 440px;
+      width: 100%;
+      text-align: center;
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+    }
+    .icon { font-size: 56px; margin-bottom: 16px; }
+    h1 { font-size: 24px; font-weight: 700; color: #f1f5f9; margin-bottom: 12px; }
+    p { font-size: 15px; color: #94a3b8; line-height: 1.6; margin-bottom: 24px; }
+    .btn {
+      display: inline-block;
+      padding: 12px 28px;
+      background: #3b82f6;
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .btn:hover { background: #2563eb; }
+    .note {
+      font-size: 13px;
+      color: #64748b;
+      background: #0f172a;
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin-top: 20px;
+    }
+  </style>
+</head>
+<body>
+  <div class="card" id="card">
+    <div class="icon" id="icon">⏳</div>
+    <h1 id="title">결제 결과를 확인하는 중…</h1>
+    <p id="desc"></p>
+    <button class="btn" type="button" onclick="window.close()">창 닫기</button>
+    <div class="note" id="note"></div>
+  </div>
+
+  <script>
+    (function () {
+      var params = new URLSearchParams(window.location.search);
+      var status = params.get('status');
+
+      var icon = document.getElementById('icon');
+      var title = document.getElementById('title');
+      var desc = document.getElementById('desc');
+      var note = document.getElementById('note');
+
+      if (status === 'success') {
+        document.title = 'PinThat — 결제 완료';
+        icon.textContent = '🎉';
+        title.textContent = '결제가 완료되었습니다!';
+        desc.innerHTML =
+          'PinThat 평생이용권이 활성화되었습니다.<br>' +
+          '이 창을 닫고 확장 프로그램으로 돌아가주세요.';
+        note.textContent = '확장 프로그램이 잠시 후 자동으로 갱신됩니다.';
+      } else if (status === 'cancel') {
+        document.title = 'PinThat — 결제 취소';
+        icon.textContent = '↩️';
+        title.textContent = '결제가 취소되었습니다.';
+        desc.innerHTML =
+          '결제가 완료되지 않았습니다.<br>' +
+          '언제든지 다시 시도하실 수 있습니다.';
+        note.textContent = '이 창을 닫고 PinThat 팝업에서 다시 시도해주세요.';
+      } else {
+        document.title = 'PinThat — 결제 결과';
+        icon.textContent = '❓';
+        title.textContent = '알 수 없는 결제 상태';
+        desc.textContent = 'status 파라미터를 인식할 수 없습니다.';
+        note.textContent = '';
+      }
+    })();
+  </script>
+</body>
+</html>

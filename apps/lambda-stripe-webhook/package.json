@@ -1,0 +1,15 @@
+{
+  "name": "lambda-stripe-webhook",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "main": "index.mjs",
+  "scripts": {
+    "dev": "node -r dotenv/config local.mjs",
+    "zip": "rm -f function.zip && zip -r function.zip index.mjs package.json",
+    "deploy": "pnpm zip && aws lambda update-function-code --region ap-northeast-2 --function-name pinthat-stripe --zip-file fileb://function.zip"
+  },
+  "devDependencies": {
+    "dotenv": "^17.4.1"
+  }
+}

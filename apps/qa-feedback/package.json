@@ -1,0 +1,10 @@
+{
+  "name": "@pinthat/qa-feedback",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Pure IIFE QA feedback script — no build step, injected via <script> tag",
+  "main": "qa-feedback.js",
+  "files": [
+    "qa-feedback.js"
+  ]
+}
