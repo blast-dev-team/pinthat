@@ -2,20 +2,20 @@ import { defineManifest } from '@crxjs/vite-plugin';
 import pkg from './package.json';
 
 export default defineManifest({
-  manifest_version: 1,
+  manifest_version: 3,
   name: 'PinThat',
   version: pkg.version,
-  description: 'Pin it, remember it, share it — visual QA feedback tool',
-  permissions: ['activeTab', 'storage', 'clipboardWrite', 'identity'],
+  description: 'Visualize your instructions. Pin it. Tell AI what to do.',
+  permissions: ['activeTab', 'storage', 'clipboardWrite', 'identity', 'downloads'],
   host_permissions: [
     'https://*.supabase.co/*',
   ],
   action: {
     default_popup: 'src/popup/index.html',
     default_icon: {
-      '16': 'icons/icon-16.png',
-      '48': 'icons/icon-48.png',
-      '128': 'icons/icon-128.png',
+      '16': 'icons/icon16.png',
+      '48': 'icons/icon48.png',
+      '128': 'icons/icon128.png',
     },
   },
   background: {
@@ -36,8 +36,8 @@ export default defineManifest({
     },
   },
   icons: {
-    '16': 'icons/icon-16.png',
-    '48': 'icons/icon-48.png',
-    '128': 'icons/icon-128.png',
+    '16': 'icons/icon16.png',
+    '48': 'icons/icon48.png',
+    '128': 'icons/icon128.png',
   },
 });

@@ -13,7 +13,6 @@ import {
   onAuthChange,
   signInWithPassword,
   signUpWithPassword,
-  signInWithGoogle,
   signOut,
   supabaseConfigMissing,
 } from './auth';
@@ -22,6 +21,7 @@ import {
   startCheckout,
   type Entitlement,
 } from './entitlement';
+import { setAccessAllowed } from '../shared/access';
 
 interface TabStatus {
   active: boolean;
@@ -53,6 +53,13 @@ export function Popup() {
   const refreshEntitlement = async () => {
     setEntitlement(await fetchEntitlement());
   };
+
+  // Keep the cached access flag (read by the background service worker
+  // when Alt+Q fires) in sync with the current entitlement.
+  useEffect(() => {
+    if (entitlement.status === 'loading') return;
+    setAccessAllowed(entitlement.status === 'paid');
+  }, [entitlement.status]);
 
   useEffect(() => {
     loadLangFromStorage().then(setLang);
@@ -122,7 +129,6 @@ export function Popup() {
         />
       )}
 
-      <div className="footer">{t('popupShortcutHint')}</div>
     </>
   );
 }
@@ -285,32 +291,9 @@ function LoginBody({
     if (mode === 'signup') setInfo(t('authSignUpSuccess'));
   };
 
-  const google = async () => {
-    setError(null);
-    setInfo(null);
-    setLoading(true);
-    const res = await signInWithGoogle();
-    setLoading(false);
-    if (!res.ok) setError(res.error);
-  };
-
   return (
     <div className="body">
       <div className="prompt-title">{t('authLoginPrompt')}</div>
-
-      <button
-        type="button"
-        className="btn btn-google"
-        onClick={google}
-        disabled={loading}
-      >
-        <GoogleIcon />
-        {t('authGoogle')}
-      </button>
-
-      <div className="divider">
-        <span>{t('authOr')}</span>
-      </div>
 
       <form onSubmit={submit} className="auth-form">
         <label className="field">
@@ -366,25 +349,3 @@ function LoginBody({
   );
 }
 
-function GoogleIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 48 48" aria-hidden>
-      <path
-        fill="#FFC107"
-        d="M43.6 20.5H42V20H24v8h11.3c-1.6 4.6-6 8-11.3 8-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"
-      />
-      <path
-        fill="#FF3D00"
-        d="M6.3 14.7l6.6 4.8C14.6 16.1 18.9 13 24 13c3.1 0 5.8 1.2 7.9 3l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.6 8.3 6.3 14.7z"
-      />
-      <path
-        fill="#4CAF50"
-        d="M24 44c5.2 0 9.9-2 13.4-5.3l-6.2-5.2c-2 1.5-4.5 2.5-7.2 2.5-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.4 39.6 16.1 44 24 44z"
-      />
-      <path
-        fill="#1976D2"
-        d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.1-4.1 5.5l6.2 5.2C41.3 35.4 44 30.1 44 24c0-1.3-.1-2.4-.4-3.5z"
-      />
-    </svg>
-  );
-}

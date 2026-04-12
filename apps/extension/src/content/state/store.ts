@@ -40,7 +40,8 @@ export type ActivePopup =
   | { kind: 'session-name' }
   | { kind: 'session-list' }
   | { kind: 'shortcut-settings' }
-  | { kind: 'selected-list' };
+  | { kind: 'selected-list' }
+  | { kind: 'snapshot-draw'; targetEl: Element; imageDataUrl: string; bbox: { x: number; y: number; w: number; h: number } };
 
 export interface Toast {
   id: number;
@@ -122,7 +123,7 @@ export const useStore = create<QaStore>((set, get) => ({
 
   addFeedback: (fb) => {
     const id = get().nextId;
-    const entry: Feedback = { ...fb, id };
+    const entry: Feedback = { ...fb, id, pageUrl: location.href };
     set((s) => ({ feedbacks: [...s.feedbacks, entry], nextId: s.nextId + 1 }));
     persistFeedbacks(get().feedbacks, get().nextId);
     return entry;

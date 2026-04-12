@@ -26,13 +26,20 @@ function describeElement(el: Element): string {
 
 /**
  * Handles document-level mousemove/click when QA mode is active.
- * Returns the current hover info (for the outline + label).
+ * Returns `hoverInfo` (outline while hovering) and `selectedInfo`
+ * (outline that stays visible while the popup form is open).
  */
 export function useElementSelection() {
   const active = useStore((s) => s.active);
   const setPopup = useStore((s) => s.setPopup);
   const popup = useStore((s) => s.popup);
   const [hoverInfo, setHoverInfo] = useState<HoverInfo | null>(null);
+  const [selectedInfo, setSelectedInfo] = useState<HoverInfo | null>(null);
+
+  // Clear the selected outline when the popup closes.
+  useEffect(() => {
+    if (!popup) setSelectedInfo(null);
+  }, [popup]);
 
   useEffect(() => {
     if (!active || popup) {
@@ -61,6 +68,14 @@ export function useElementSelection() {
       if (!target || isPinthatElement(target)) return;
       e.preventDefault();
       e.stopPropagation();
+      const rect = target.getBoundingClientRect();
+      setSelectedInfo({
+        left: rect.left,
+        top: rect.top,
+        width: rect.width,
+        height: rect.height,
+        label: describeElement(target),
+      });
       setHoverInfo(null);
       setPopup({ kind: 'type-select', targetEl: target });
     };
@@ -73,5 +88,5 @@ export function useElementSelection() {
     };
   }, [active, popup, setPopup]);
 
-  return hoverInfo;
+  return { hoverInfo, selectedInfo };
 }

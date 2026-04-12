@@ -23,13 +23,7 @@ export function useShortcuts() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      // Don't steal keys from editable fields.
-      const target = e.target as Element | null;
-      const tag = (target?.tagName || '').toLowerCase();
-      if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
-      if ((target as HTMLElement | null)?.isContentEditable) return;
-
-      // Escape closes any open popup.
+      // Escape closes any open popup — even from inside input/textarea.
       if (e.key === 'Escape') {
         if (popupKind) {
           e.preventDefault();
@@ -37,6 +31,12 @@ export function useShortcuts() {
         }
         return;
       }
+
+      // Don't steal keys from editable fields.
+      const target = e.target as Element | null;
+      const tag = (target?.tagName || '').toLowerCase();
+      if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+      if ((target as HTMLElement | null)?.isContentEditable) return;
 
       // Don't fire shortcuts while the shortcut settings modal is open
       // or while a text-input popup is active.

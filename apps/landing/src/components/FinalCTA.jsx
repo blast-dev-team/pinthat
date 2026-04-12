@@ -19,9 +19,6 @@ export default function FinalCTA() {
                 <span className="material-symbols-outlined">extension</span>
                 {t('finalCTA.cta')}
               </button>
-              <span className="text-lg font-medium opacity-80">
-                {t('finalCTA.note')}
-              </span>
             </div>
           </div>
           <div className="absolute inset-0 opacity-10 pointer-events-none">

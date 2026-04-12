@@ -29,13 +29,6 @@ export default function Hero() {
               <span className="material-symbols-outlined">extension</span>
               {t('hero.ctaPrimary')}
             </button>
-            <a
-              href="#workflow"
-              className="bg-surface-container-low hover:bg-surface-container text-on-surface px-8 py-4 rounded font-headline font-bold text-lg transition-all active:scale-95 flex items-center justify-center gap-2"
-            >
-              <span className="material-symbols-outlined">play_circle</span>
-              {t('hero.ctaSecondary')}
-            </a>
           </div>
         </div>
         <div className="lg:col-span-6 relative">

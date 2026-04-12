@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Palette, Cog, Type, Move3d } from 'lucide-react';
+import { Palette, Cog, Type, Move3d, Camera } from 'lucide-react';
 import { useStore } from '../../state/store';
 import { useDraggable } from '../../hooks/useDraggable';
 import { useT } from '../../hooks/useT';
@@ -52,6 +52,8 @@ export function TypeSelectionPopup({ targetEl }: Props) {
     }
   }, [selectedType]);
 
+  const [capturing, setCapturing] = useState(false);
+
   const choose = (fbType: InlineType | '위치이동', e?: React.MouseEvent) => {
     if (fbType === '위치이동') {
       const pos = e
@@ -62,6 +64,45 @@ export function TypeSelectionPopup({ targetEl }: Props) {
     }
     setSelectedType(fbType);
     if (error) setError(false);
+  };
+
+  const handleSnapshot = async () => {
+    if (capturing) return;
+    setCapturing(true);
+    try {
+      const rect = targetEl.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      const response = await chrome.runtime.sendMessage({ action: 'capture-tab' });
+      if (!response?.dataUrl) {
+        setCapturing(false);
+        return;
+      }
+      // Crop the full-tab screenshot to the element's bounding box
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const cropX = rect.x * dpr;
+        const cropY = rect.y * dpr;
+        const cropW = rect.width * dpr;
+        const cropH = rect.height * dpr;
+        canvas.width = cropW;
+        canvas.height = cropH;
+        const ctx = canvas.getContext('2d')!;
+        ctx.drawImage(img, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
+        const croppedUrl = canvas.toDataURL('image/png');
+        setCapturing(false);
+        setPopup({
+          kind: 'snapshot-draw',
+          targetEl,
+          imageDataUrl: croppedUrl,
+          bbox: { x: rect.x, y: rect.y, w: rect.width, h: rect.height },
+        });
+      };
+      img.onerror = () => setCapturing(false);
+      img.src = response.dataUrl;
+    } catch {
+      setCapturing(false);
+    }
   };
 
   const save = () => {
@@ -107,6 +148,7 @@ export function TypeSelectionPopup({ targetEl }: Props) {
         open={inspectOpen}
         onToggle={() => setInspectOpen((o) => !o)}
         rgbToHex={rgbToHex}
+        targetEl={targetEl}
       />
       <div className="qa-feedback-type-select">
         <div style={{ fontSize: 12, color: 'var(--qa-on-surface-variant)', marginBottom: 8 }}>
@@ -117,6 +159,15 @@ export function TypeSelectionPopup({ targetEl }: Props) {
           {typeBtn('기능', t('typeFeature'), Cog)}
           {typeBtn('텍스트', t('typeText'), Type)}
           {typeBtn('위치이동', t('typeMove'), Move3d)}
+          <button
+            className="qa-feedback-type-btn"
+            data-tooltip={capturing ? t('snapshotCapturing') : t('typeSnapshot')}
+            aria-label={t('typeSnapshot')}
+            onClick={handleSnapshot}
+            disabled={capturing}
+          >
+            <Camera size={18} strokeWidth={2} />
+          </button>
         </div>
       </div>
 

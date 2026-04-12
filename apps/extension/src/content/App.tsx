@@ -20,7 +20,7 @@ export function App(_props: AppProps) {
 
   const panelVisible = useStore((s) => s.panelVisible);
   const active = useStore((s) => s.active);
-  const hoverInfo = useElementSelection();
+  const { hoverInfo, selectedInfo } = useElementSelection();
 
   // The browser popup's toggle controls `panelVisible`. When the panel is
   // hidden, nothing from the extension renders. When it's visible but
@@ -32,6 +32,7 @@ export function App(_props: AppProps) {
     <>
       <Panel />
       {active && hoverInfo && <HoverOverlay info={hoverInfo} />}
+      {active && selectedInfo && <HoverOverlay info={selectedInfo} />}
       {active && <SelectedOverlays />}
       {active && <FreeMoveArrowOverlays />}
       <PopupRouter />

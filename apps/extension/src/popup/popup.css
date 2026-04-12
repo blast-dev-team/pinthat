@@ -316,16 +316,6 @@ body {
 .btn-primary:active:not(:disabled) {
   transform: scale(0.98);
 }
-.btn-google {
-  background: var(--surface-container-lowest);
-  color: var(--on-surface);
-  border-color: var(--outline-variant);
-}
-.btn-google:hover:not(:disabled) {
-  border-color: var(--primary);
-  background: var(--primary-fixed);
-}
-
 .divider {
   display: flex;
   align-items: center;

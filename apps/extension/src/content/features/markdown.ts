@@ -8,9 +8,9 @@ export function generateMarkdown(feedbacks: Feedback[], lang: Lang): string {
   const now = new Date();
   const pad = (n: number) => String(n).padStart(2, '0');
   const dateStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
-  const page = location.pathname.split('/').pop() || 'index.html';
+  const pageUrl = feedbacks[0]?.pageUrl || location.href;
 
-  let md = `# ${tr('mdTitle')} — ${page}\n> ${tr('mdReviewDate')}: ${dateStr}\n> ${tr('mdTotal')}: ${feedbacks.length}${lang === 'ko' ? tr('mdItems') : ' ' + tr('mdItems')}\n\n---\n\n`;
+  let md = `# ${tr('mdTitle')}\n> ${tr('mdReviewDate')}: ${dateStr}\n> ${tr('mdPage')}: ${pageUrl}\n> ${tr('mdTotal')}: ${feedbacks.length} ${tr('mdItems')}\n\n---\n\n`;
 
   const dirKeys: Record<string, StringKey> = {
     left: 'moveDirLeft',

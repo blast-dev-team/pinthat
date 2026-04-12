@@ -14,6 +14,7 @@ import { SessionNameModal } from './modals/SessionNameModal';
 import { SessionListModal } from './modals/SessionListModal';
 import { ShortcutSettingsModal } from './modals/ShortcutSettingsModal';
 import { SelectedListPopup } from './popups/SelectedListPopup';
+import { SnapshotDrawModal } from './popups/SnapshotDrawModal';
 
 export function PopupRouter() {
   const popup = useStore((s) => s.popup);
@@ -59,6 +60,14 @@ export function PopupRouter() {
       return <ShortcutSettingsModal />;
     case 'selected-list':
       return <SelectedListPopup />;
+    case 'snapshot-draw':
+      return (
+        <SnapshotDrawModal
+          targetEl={popup.targetEl}
+          imageDataUrl={popup.imageDataUrl}
+          bbox={popup.bbox}
+        />
+      );
     default:
       return null;
   }

@@ -67,10 +67,12 @@ export interface Feedback extends CapturedElement {
   id: number;
   feedback: string;
   fbType: FeedbackType;
+  pageUrl?: string;
   moveType?: 'component' | 'free';
   moveDirection?: 'up' | 'down' | 'left' | 'right';
   moveTarget?: MoveTarget | null;
   multiEls?: CapturedElement[];
+  snapshotDataUrl?: string;
 }
 
 export interface PanelPos {

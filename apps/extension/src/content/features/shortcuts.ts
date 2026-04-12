@@ -16,10 +16,10 @@ export interface KeyConfig {
 export type ShortcutsConfig = Record<ShortcutAction, KeyConfig>;
 
 export const DEFAULT_SHORTCUTS: ShortcutsConfig = {
-  toggle: { alt: true, key: 'q' },
-  element: { key: '1' },
-  export: { key: 'e' },
-  reset: { key: 'r' },
+  toggle: { alt: true, key: 'w' },
+  element: { alt: true, key: 's' },
+  export: { alt: true, key: 'x' },
+  reset: { alt: true, key: 'c' },
 };
 
 export const SHORTCUTS_STORAGE_KEY = 'qa-shortcuts';
