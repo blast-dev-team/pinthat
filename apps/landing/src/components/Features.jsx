@@ -78,7 +78,7 @@ export default function Features() {
               <h3 className="text-2xl font-bold font-headline">
                 {t('features.card4.title')}
               </h3>
-              <p className="text-on-surface-variant leading-relaxed">
+              <p className="text-on-surface-variant leading-relaxed whitespace-pre-line">
                 {t('features.card4.desc')}
               </p>
             </div>

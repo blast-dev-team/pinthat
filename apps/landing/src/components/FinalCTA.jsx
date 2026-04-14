@@ -8,7 +8,7 @@ export default function FinalCTA() {
       <div className="max-w-7xl mx-auto px-6">
         <div className="bg-gradient-to-br from-primary to-primary-container rounded-[2rem] p-12 md:p-24 text-center text-on-primary relative overflow-hidden">
           <div className="relative z-10 space-y-10">
-            <h2 className="text-4xl md:text-6xl font-extrabold font-headline tracking-tight max-w-4xl mx-auto leading-tight">
+            <h2 className="text-4xl md:text-6xl font-extrabold font-headline tracking-tight max-w-4xl mx-auto leading-tight whitespace-pre-line">
               {t('finalCTA.heading')}
             </h2>
             <div className="flex flex-col sm:flex-row justify-center items-center gap-6">

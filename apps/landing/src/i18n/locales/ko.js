@@ -6,12 +6,12 @@ export default {
     cta: '익스텐션 받기',
   },
   hero: {
-    badge: '바이브 코딩의 끝판왕',
-    titleBefore: 'AI 엔지니어를 위한 ',
-    titleAccent: '바이브 코딩',
+    badge: 'UX/UI를 빠르게 수정하는 팁',
+    titleBefore: '바이브코더들을 위한\n',
+    titleAccent: 'UI 수정',
     titleAfter: ' 도구',
     description:
-      '어떤 웹페이지에서든 바꾸고 싶은 부분을 정확히 핀으로 찍으세요. Claude Code, Cursor, ChatGPT를 위한 완벽한 프롬프트를 단 몇 초 만에 생성합니다. 설명은 그만, 이제 핀을 찍으세요.',
+      'UI를 바꾸고 싶은 부분을 정확히 핀으로 찍으세요\nClaude Code, Cursor, ChatGPT를 위한\n완벽한 프롬프트를 단 몇 초 만에 생성합니다.\n설명하고 캡처하는 것 대신 이제 핀을 찍어 설명하세요.',
     ctaPrimary: 'Chrome에 추가하기',
     ctaSecondary: '워크플로우 보기',
     mockCardTitle: 'Pinthat 바이브',
@@ -30,9 +30,8 @@ export default {
     revenueNote: 'Stripe을 통해 처리된 누적 매출',
   },
   features: {
-    heading: 'AI 퍼스트 개발자를 위해 만들어졌습니다',
-    subheading:
-      '바이브 코딩은 의도의 문제입니다. Pinthat이 컨텍스트를 담아내, 여러분은 비전에만 집중할 수 있습니다.',
+    heading: '바이브코더를 위해 만들었습니다',
+    subheading: 'Pinthat을 활용하여 바이브코딩의 결과물을 수정하세요',
     card1: {
       title: '클릭 한 번으로 컨텍스트 전달',
       desc: 'UI 요소를 선택하세요. Pinthat이 깔끔한 HTML, CSS 변수, 레이아웃 로직을 추출해 AI 모델이 정확히 무엇을 보고 있는지 이해하게 합니다.',
@@ -47,7 +46,7 @@ export default {
     },
     card4: {
       title: '마찰 없는 워크플로우',
-      desc: '이제 "요소 검사"와 수동 복사·붙여넣기는 그만. 흐름을 유지하며 생각의 속도로 기능을 배포하세요.',
+      desc: '이제 "요소 검사"와 수동 복사·붙여넣기는 그만.\n흐름을 유지하며 생각의 속도로 기능을 배포하세요.',
     },
   },
   workflow: {
@@ -83,7 +82,7 @@ export default {
     badge: '평생 이용권',
     planName: 'Pinthat Pro',
     planTagline:
-      '핀 찍고, 프롬프트 만들고, 배포하기 위한 모든 것 — 제품이 존재하는 한 평생.',
+      '핀 찍고, 프롬프트 만들고, 배포하기 위한 모든 것 제품이 존재하는 한 평생.',
     priceSuffix: '1회 결제',
     priceNote: '한 번 결제. 평생 소유.',
     features: [
@@ -97,7 +96,7 @@ export default {
     secure: 'Stripe를 통한 안전한 결제 · 맞지 않으면 30일 내 환불',
   },
   finalCTA: {
-    heading: '오늘부터 바이브 코딩을 한 단계 끌어올리세요',
+    heading: '오늘도 UI를 수정 중이신가요?\nPinthat으로 더 빠르게 수정하세요!',
     cta: 'Chrome에 추가하기',
     note: '베타 기간 동안 무료. AI 무브먼트에 합류하세요.',
   },

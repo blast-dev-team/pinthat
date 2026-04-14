@@ -11,14 +11,14 @@ export default function Hero() {
             <span className="w-2 h-2 bg-primary rounded-full"></span>
             {t('hero.badge')}
           </div>
-          <h1 className="text-6xl font-extrabold font-headline leading-[1.1] tracking-tight text-on-background">
+          <h1 className="text-6xl font-extrabold font-headline leading-[1.1] tracking-tight text-on-background whitespace-pre-line">
             {t('hero.titleBefore')}
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-primary-container">
               {t('hero.titleAccent')}
             </span>
             {t('hero.titleAfter')}
           </h1>
-          <p className="text-xl text-on-surface-variant max-w-lg leading-relaxed">
+          <p className="text-xl text-on-surface-variant max-w-lg leading-relaxed whitespace-pre-line">
             {t('hero.description')}
           </p>
           <div className="flex flex-col sm:flex-row gap-4">
