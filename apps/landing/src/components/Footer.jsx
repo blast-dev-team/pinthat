@@ -2,11 +2,6 @@ import { useT } from '../i18n/index.jsx';
 
 const LINKS = [
   { href: '/privacy.html', key: 'privacy' },
-  {
-    href: 'https://github.com/blast-dev-team/pinthat',
-    key: 'github',
-    external: true,
-  },
   { href: 'mailto:el.lee@blast-team.com', key: 'contact' },
 ];
 

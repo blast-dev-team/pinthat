@@ -12,6 +12,17 @@ interface ContentMessage {
   [key: string]: unknown;
 }
 
+async function sendWithRetry(tabId: number, message: Record<string, unknown>): Promise<void> {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      await chrome.tabs.sendMessage(tabId, message);
+      return;
+    } catch {
+      if (attempt < 4) await new Promise((r) => setTimeout(r, 500));
+    }
+  }
+}
+
 // Keyboard shortcut → content script. Only relayed if the signed-in user
 // has a paid plan — the popup keeps the cached access flag fresh.
 chrome.commands.onCommand.addListener(async (command) => {
@@ -19,7 +30,7 @@ chrome.commands.onCommand.addListener(async (command) => {
   if (!(await getAccessAllowed())) return;
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (tab?.id != null) {
-    chrome.tabs.sendMessage(tab.id, { action: 'toggle-qa' }).catch(() => {});
+    await sendWithRetry(tab.id, { action: 'toggle-qa' });
   }
 });
 

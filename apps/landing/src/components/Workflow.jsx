@@ -1,12 +1,20 @@
 import { useT } from '../i18n/index.jsx';
 
+const STEP_IMAGES = [
+  '/step1.png',
+  '/step2.png',
+  '/step3.png',
+  '/step4.png',
+  '/step5.png',
+];
+
 export default function Workflow() {
   const { t } = useT();
   const steps = t('workflow.steps');
   return (
     <section id="workflow" className="py-32 bg-surface-container-low">
-      <div className="max-w-7xl mx-auto px-6">
-        <div className="text-center mb-24">
+      <div className="max-w-3xl mx-auto px-6">
+        <div className="text-center mb-20">
           <h2 className="text-4xl font-extrabold font-headline tracking-tight">
             {t('workflow.heading')}
           </h2>
@@ -14,25 +22,41 @@ export default function Workflow() {
             {t('workflow.subheading')}
           </p>
         </div>
-        <div className="grid lg:grid-cols-5 md:grid-cols-3 sm:grid-cols-2 gap-8 relative">
-          <div className="hidden lg:block absolute top-12 left-0 w-full h-0.5 bg-gradient-to-r from-primary/5 via-primary/20 to-primary/5 -z-0"></div>
 
-          {steps.map((step, i) => (
-            <div
-              key={step.title}
-              className="relative z-10 bg-surface-container-lowest p-8 rounded-2xl border border-outline-variant/10 shadow-sm hover:shadow-md transition-shadow"
-            >
-              <div className="w-12 h-12 bg-primary text-on-primary rounded-full flex items-center justify-center font-bold mb-6 text-xl shadow-lg shadow-primary/20">
-                {i + 1}
+        <div className="flex flex-col gap-24">
+          {steps.map((step, i) => {
+            const isEven = i % 2 === 0;
+            return (
+              <div
+                key={step.title}
+                className={`flex flex-col ${isEven ? 'md:flex-row' : 'md:flex-row-reverse'} items-center gap-10 md:gap-16`}
+              >
+                {/* Image */}
+                <div className="w-full md:w-2/5 flex justify-center">
+                  <div className="relative rounded-2xl overflow-hidden border border-outline-variant/15 shadow-lg hover:shadow-xl transition-shadow duration-300 bg-white max-w-sm">
+                    <img
+                      src={STEP_IMAGES[i]}
+                      alt={step.title}
+                      className="w-full h-auto object-contain"
+                    />
+                  </div>
+                </div>
+
+                {/* Text */}
+                <div className="w-full md:w-1/2 flex flex-col items-center md:items-start text-center md:text-left">
+                  <div className="w-10 h-10 bg-primary text-on-primary rounded-full flex items-center justify-center font-bold text-sm shadow-lg shadow-primary/20 mb-4">
+                    {i + 1}
+                  </div>
+                  <h4 className="text-2xl font-bold font-headline mb-3">
+                    {step.title}
+                  </h4>
+                  <p className="text-base text-on-surface-variant leading-relaxed max-w-md whitespace-pre-line">
+                    {step.desc}
+                  </p>
+                </div>
               </div>
-              <h4 className="text-lg font-bold font-headline mb-3">
-                {step.title}
-              </h4>
-              <p className="text-sm text-on-surface-variant leading-relaxed">
-                {step.desc}
-              </p>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </section>

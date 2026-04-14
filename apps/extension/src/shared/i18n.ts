@@ -40,8 +40,8 @@ export const STRINGS = {
     paywallPaidBadge: 'Lifetime access active',
 
     /* Panel buttons */
-    btnModeOn: 'Select',
-    btnModeOff: 'Select',
+    btnModeOn: 'Enable',
+    btnModeOff: 'Enable',
     btnSelectElement: 'Selected Elements',
     btnSelectedListEmpty: 'No elements selected.',
     btnSelectedListTitle: 'Selected Elements',
@@ -205,8 +205,8 @@ export const STRINGS = {
     paywallPaidBadge: 'Lifetime access active',
 
     /* Panel buttons */
-    btnModeOn: 'Select',
-    btnModeOff: 'Select',
+    btnModeOn: 'Enable',
+    btnModeOff: 'Enable',
     btnSelectElement: 'Selected Elements',
     btnSelectedListEmpty: 'No elements selected yet.',
     btnSelectedListTitle: 'Selected Elements',

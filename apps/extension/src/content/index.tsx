@@ -69,6 +69,10 @@ function mount() {
   // Popup ↔ content messaging
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     const state = useStore.getState();
+    if (msg.action === 'ping') {
+      sendResponse({ pong: true });
+      return true;
+    }
     if (msg.action === 'get-status') {
       sendResponse({
         active: state.panelVisible,

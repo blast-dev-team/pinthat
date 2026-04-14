@@ -17,9 +17,9 @@ export type ShortcutsConfig = Record<ShortcutAction, KeyConfig>;
 
 export const DEFAULT_SHORTCUTS: ShortcutsConfig = {
   toggle: { alt: true, key: 'w' },
-  element: { alt: true, key: 's' },
-  export: { alt: true, key: 'x' },
-  reset: { alt: true, key: 'c' },
+  element: { alt: true, key: 'v' },
+  export: { alt: true, key: 'e' },
+  reset: { alt: true, key: 'r' },
 };
 
 export const SHORTCUTS_STORAGE_KEY = 'qa-shortcuts';

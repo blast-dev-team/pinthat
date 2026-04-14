@@ -15,26 +15,6 @@ export default function Header() {
               Pinthat
             </span>
           </a>
-          <div className="hidden md:flex gap-6 items-center">
-            <a
-              className="font-headline font-medium text-sm tracking-tight text-primary border-b-2 border-primary pb-0.5 hover:opacity-80 transition-all duration-300"
-              href="#features"
-            >
-              {t('nav.features')}
-            </a>
-            <a
-              className="font-headline font-medium text-sm tracking-tight text-on-surface-variant hover:text-primary hover:opacity-80 transition-all duration-300"
-              href="#workflow"
-            >
-              {t('nav.workflow')}
-            </a>
-            <a
-              className="font-headline font-medium text-sm tracking-tight text-on-surface-variant hover:text-primary hover:opacity-80 transition-all duration-300"
-              href="#pricing"
-            >
-              {t('nav.pricing')}
-            </a>
-          </div>
         </div>
         <div className="flex items-center gap-3">
           <LanguageSwitcher />

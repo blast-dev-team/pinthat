@@ -7,11 +7,11 @@ export default {
   },
   hero: {
     badge: 'Ultimate Vibe Coding Companion',
-    titleBefore: 'The ',
-    titleAccent: 'Vibe Coding',
-    titleAfter: ' Tool for AI Engineers',
+    titleBefore: '',
+    titleAccent: 'Pin your requests',
+    titleAfter: ' and show your AI',
     description:
-      'Pin exactly what you want to change on any webpage. Generate perfect prompts for Claude Code, Cursor, and ChatGPT in seconds. Stop describing, start pinning.',
+      'Pin UI changes directly on any webpage. Generate AI-ready prompts in seconds.',
     ctaPrimary: 'Add to Chrome',
     ctaSecondary: 'Watch Workflow',
     mockCardTitle: 'Pinthat Vibe',
@@ -51,12 +51,12 @@ export default {
     },
   },
   workflow: {
-    heading: 'The Vibe Coding Workflow',
+    heading: 'Pinthat Workflow',
     subheading: 'Mastering the bridge between browser and builder.',
     steps: [
       {
         title: 'Turn on Extension',
-        desc: 'Activate Pinthat in your browser toolbar on any page you want to modify.',
+        desc: 'Activate Pinthat in your browser toolbar\non any page you want to modify.',
       },
       {
         title: 'Pin Point',
@@ -64,15 +64,15 @@ export default {
       },
       {
         title: 'Describe Vibe',
-        desc: 'Briefly type what you want to change (e.g., "Make this dark mode" or "Add a search bar").',
+        desc: 'Briefly type what you want to change.',
       },
       {
         title: 'Copy Prompt',
-        desc: 'One click to copy a perfectly structured technical prompt with full HTML context.',
+        desc: 'One click to copy a perfectly structured\ntechnical prompt with full HTML context.',
       },
       {
         title: 'Paste & Execute',
-        desc: 'Paste into Claude Code, Cursor, or ChatGPT and watch the AI ship your changes.',
+        desc: 'Paste into Claude Code, Cursor, or ChatGPT\nand watch the AI ship your changes.',
       },
     ],
   },
@@ -103,7 +103,7 @@ export default {
   },
   footer: {
     tagline: '© 2026 Pinthat. Built for the future of coding.',
-    builtBy: 'Built with love by BOYD',
+    builtBy: 'Built with love by Blast',
     links: {
       privacy: 'Privacy',
       github: 'GitHub',

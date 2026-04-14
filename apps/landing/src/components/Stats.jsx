@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { useT } from '../i18n/index.jsx';
 
-const MOCK_BASE_USERS = 1247;
-const MOCK_BASE_REVENUE = 12470;
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const PRICE_PER_CUSTOMER = 10;
 
 function useCountUp(target, duration = 1500) {
   const [value, setValue] = useState(0);
@@ -29,18 +30,33 @@ function useCountUp(target, duration = 1500) {
   return value;
 }
 
+async function fetchCustomerCount() {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/get_customer_count`, {
+    method: 'POST',
+    headers: {
+      apikey: SUPABASE_ANON_KEY,
+      Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+      'Content-Type': 'application/json',
+    },
+  });
+  if (!res.ok) throw new Error('Failed to fetch customer count');
+  return res.json();
+}
+
 export default function Stats() {
   const { t } = useT();
-  const [users, setUsers] = useState(MOCK_BASE_USERS);
-  const [revenue, setRevenue] = useState(MOCK_BASE_REVENUE);
+  const [users, setUsers] = useState(0);
+  const [revenue, setRevenue] = useState(0);
 
   useEffect(() => {
-    const id = setInterval(() => {
-      const newUsers = Math.floor(Math.random() * 3) + 1;
-      setUsers((u) => u + newUsers);
-      setRevenue((r) => r + newUsers * 10);
-    }, 4000);
-    return () => clearInterval(id);
+    fetchCustomerCount()
+      .then((count) => {
+        setUsers(count);
+        setRevenue(count * PRICE_PER_CUSTOMER);
+      })
+      .catch(() => {
+        // Silently fail — stats just stay at 0
+      });
   }, []);
 
   const animatedUsers = useCountUp(users);

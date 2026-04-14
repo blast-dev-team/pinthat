@@ -33,11 +33,17 @@ async function sendToActiveTab<T = unknown>(
 ): Promise<T | null> {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!tab?.id) return null;
-  try {
-    return (await chrome.tabs.sendMessage(tab.id, message)) as T;
-  } catch {
-    return null;
+
+  // Retry up to 5 times (total ~2.5 s) to handle the case where the content
+  // script hasn't mounted yet on a freshly-opened tab.
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      return (await chrome.tabs.sendMessage(tab.id, message)) as T;
+    } catch {
+      if (attempt < 4) await new Promise((r) => setTimeout(r, 500));
+    }
   }
+  return null;
 }
 
 export function Popup() {
